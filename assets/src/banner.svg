@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="471" viewBox="0 0 900 471">
+  <defs>
+    <linearGradient id="accent" x1="0" y1="0" x2="900" y2="471" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#45B1F8"/>
+      <stop offset="1" stop-color="#34D399"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="471" fill="#0A0F1A"/>
+  <g stroke="#FFFFFF" stroke-opacity="0.05" stroke-width="1">
+    <line x1="50" y1="0" x2="50" y2="471"/>
+    <line x1="100" y1="0" x2="100" y2="471"/>
+    <line x1="150" y1="0" x2="150" y2="471"/>
+    <line x1="200" y1="0" x2="200" y2="471"/>
+    <line x1="250" y1="0" x2="250" y2="471"/>
+    <line x1="300" y1="0" x2="300" y2="471"/>
+    <line x1="350" y1="0" x2="350" y2="471"/>
+    <line x1="400" y1="0" x2="400" y2="471"/>
+    <line x1="450" y1="0" x2="450" y2="471"/>
+    <line x1="500" y1="0" x2="500" y2="471"/>
+    <line x1="550" y1="0" x2="550" y2="471"/>
+    <line x1="600" y1="0" x2="600" y2="471"/>
+    <line x1="650" y1="0" x2="650" y2="471"/>
+    <line x1="700" y1="0" x2="700" y2="471"/>
+    <line x1="750" y1="0" x2="750" y2="471"/>
+    <line x1="800" y1="0" x2="800" y2="471"/>
+    <line x1="850" y1="0" x2="850" y2="471"/>
+    <line x1="0" y1="50" x2="900" y2="50"/>
+    <line x1="0" y1="100" x2="900" y2="100"/>
+    <line x1="0" y1="150" x2="900" y2="150"/>
+    <line x1="0" y1="200" x2="900" y2="200"/>
+    <line x1="0" y1="250" x2="900" y2="250"/>
+    <line x1="0" y1="300" x2="900" y2="300"/>
+    <line x1="0" y1="350" x2="900" y2="350"/>
+    <line x1="0" y1="400" x2="900" y2="400"/>
+    <line x1="0" y1="450" x2="900" y2="450"/>
+  </g>
+  <g transform="translate(64,52) scale(0.0547)">
+    <g stroke="url(#accent)" fill="none" stroke-linecap="round" stroke-width="76">
+      <circle cx="512" cy="512" r="296"/>
+      <line x1="512" y1="86" x2="512" y2="312"/>
+      <line x1="512" y1="712" x2="512" y2="938"/>
+      <line x1="86" y1="512" x2="312" y2="512"/>
+      <line x1="712" y1="512" x2="938" y2="512"/>
+    </g>
+    <circle cx="512" cy="512" r="92" fill="url(#accent)"/>
+  </g>
+  <text x="64" y="212" font-family="Helvetica Neue, Helvetica, Arial" font-size="62" font-weight="500" fill="#F2F5F7">Control the web</text>
+  <text x="64" y="286" font-family="Helvetica Neue, Helvetica, Arial" font-size="62" font-weight="500" fill="#F2F5F7">with <tspan fill="url(#accent)">precision.</tspan></text>
+</svg>
