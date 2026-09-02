@@ -1,0 +1,31 @@
+[package]
+name = "telemaco"
+version = "0.1.0"
+edition = "2021"
+description = "Rust API for the Telemaco headless browser"
+readme = "README.md"
+repository = "https://github.com/AlbertoBarrago/telemaco"
+license = "Apache-2.0"
+
+[features]
+default = ["api"]
+api = ["telemaco-browser", "telemaco-net", "tokio"]
+stealth = ["api", "telemaco-browser/stealth"]
+render = ["api", "telemaco-browser/render"]
+
+[dependencies]
+telemaco-browser = { path = "../telemaco-browser", optional = true }
+telemaco-net = { path = "../telemaco-net", optional = true }
+anyhow = "1"
+tokio = { version = "1", features = ["rt"], optional = true }
+thiserror = "1"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+[[example]]
+name = "basic"
+required-features = ["stealth"]

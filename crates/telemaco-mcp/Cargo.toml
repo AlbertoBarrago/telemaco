@@ -1,0 +1,23 @@
+[package]
+name = "telemaco-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+stealth = ["telemaco-browser/stealth", "telemaco-net/stealth"]
+render = ["telemaco-browser/render", "dep:base64"]
+
+[dependencies]
+telemaco-browser = { workspace = true }
+telemaco-dom = { workspace = true }
+telemaco-net = { workspace = true }
+tokio = { workspace = true }
+url = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+base64 = { workspace = true, optional = true }

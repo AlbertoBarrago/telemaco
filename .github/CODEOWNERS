@@ -1,0 +1,8 @@
+# Repository maintainers.
+* @AlbertoBarrago
+
+# Keep security-sensitive automation explicit even if more owners are added later.
+/.github/CODEOWNERS @AlbertoBarrago
+/.github/workflows/ @AlbertoBarrago
+/scripts/ci/ @AlbertoBarrago
+/deny.toml @AlbertoBarrago

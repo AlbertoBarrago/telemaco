@@ -1,0 +1,72 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/telemaco-dom",
+    "crates/telemaco-net",
+    "crates/telemaco-browser",
+    "crates/telemaco-cdp",
+    "crates/telemaco-js",
+    "crates/telemaco-mcp",
+    "crates/telemaco-render",
+    "crates/telemaco-cli",
+    "crates/telemaco",
+    "crates/telemaco-gui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/AlbertoBarrago/telemaco"
+
+[workspace.dependencies]
+telemaco-dom = { path = "crates/telemaco-dom" }
+telemaco-net = { path = "crates/telemaco-net" }
+telemaco-browser = { path = "crates/telemaco-browser" }
+telemaco-cdp = { path = "crates/telemaco-cdp" }
+telemaco-js = { path = "crates/telemaco-js" }
+telemaco-mcp = { path = "crates/telemaco-mcp" }
+telemaco-render = { path = "crates/telemaco-render" }
+
+html5ever = "0.39"
+markup5ever = "0.39"
+selectors = "0.26"
+servo_arc = "0.4"
+cssparser = "0.34"
+# Layout engine for the optional render layer (telemaco-render). Pure Rust.
+taffy = "0.12"
+# CPU-only pure-Rust 2D rasterizer for the render layer's paint step.
+tiny-skia = "0.12"
+# Pure-Rust glyph rasterizer for the render layer's text step.
+ab_glyph = "0.2"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.26"
+# No "cookies" feature: telemaco manages cookies through its own CookieJar
+# (telemaco-net/src/cookies.rs) and never uses reqwest's cookie store. Pulling
+# it in only added the cookie/cookie_store crates, and cookie 0.18.1's blanket
+# From impl fails to compile under coherence on some toolchains (issue #295).
+reqwest = { version = "0.12", features = ["gzip", "brotli", "deflate", "rustls-tls", "socks"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
+thiserror = "2"
+anyhow = "1"
+base64 = "0.22"
+
+[patch.crates-io]
+# Keep the grid shrink-to-fit correction local until it lands upstream.
+taffy = { path = "vendor/taffy" }
+# Carry the same canonical variable-font coordinates through shaping and
+# rasterization until the upstream API exposes them.
+cosmic-text = { path = "vendor/cosmic-text" }
+
+# Unwinding (the Rust default) is REQUIRED for the anti-panic protocol: ops wrap
+# their bodies in std::panic::catch_unwind so a panic degrades to an error return
+# instead of unwinding into V8's FFI frame and aborting the process. panic="abort"
+# would turn every catchable op panic into a hard crash.
+[profile.release]
+panic = "unwind"

@@ -1,0 +1,38 @@
+[package]
+name = "telemaco-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "telemaco"
+path = "src/main.rs"
+
+[[bin]]
+name = "telemaco-worker"
+path = "src/worker.rs"
+
+[features]
+default = []
+stealth = ["telemaco-browser/stealth", "telemaco-net/stealth", "telemaco-mcp/stealth"]
+render = ["telemaco-browser/render", "telemaco-cdp/render", "telemaco-mcp/render"]
+
+[dependencies]
+telemaco-browser = { workspace = true }
+telemaco-mcp = { workspace = true }
+telemaco-cdp = { workspace = true }
+telemaco-dom = { workspace = true }
+telemaco-net = { workspace = true }
+telemaco-js = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+url = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }

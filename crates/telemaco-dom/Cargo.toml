@@ -1,0 +1,18 @@
+[package]
+name = "telemaco-dom"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+html5ever = { workspace = true }
+markup5ever = { workspace = true }
+selectors = { workspace = true }
+servo_arc = { workspace = true }
+cssparser = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+precomputed-hash = "0.1"
+
+[dev-dependencies]
