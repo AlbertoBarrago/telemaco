@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icon.png" alt="Telemaco" width="80" />
+  <img src="assets/icon.png?v=2" alt="Telemaco" width="80" />
 </p>
 
 <h1 align="center">Telemaco</h1>

@@ -1,28 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="accent" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#45B1F8"/>
       <stop offset="1" stop-color="#34D399"/>
     </linearGradient>
-    <radialGradient id="glow" cx="512" cy="512" r="512" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#2DD4BF" stop-opacity="0.14"/>
-      <stop offset="0.55" stop-color="#2DD4BF" stop-opacity="0.04"/>
-      <stop offset="1" stop-color="#2DD4BF" stop-opacity="0"/>
-    </radialGradient>
-    <clipPath id="squircle">
-      <rect x="0" y="0" width="1024" height="1024" rx="230"/>
-    </clipPath>
   </defs>
-  <g clip-path="url(#squircle)">
-    <rect width="1024" height="1024" fill="#0A0F1A"/>
-    <rect width="1024" height="1024" fill="url(#glow)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#g)"/>
+  <g stroke="#FFFFFF" stroke-width="48" stroke-linecap="round">
+    <line x1="504" y1="600" x2="392" y2="832"/>
+    <line x1="520" y1="600" x2="632" y2="832"/>
   </g>
-  <g stroke="url(#accent)" fill="none" stroke-linecap="round" stroke-width="76">
-    <circle cx="512" cy="512" r="296"/>
-    <line x1="512" y1="86" x2="512" y2="312"/>
-    <line x1="512" y1="712" x2="512" y2="938"/>
-    <line x1="86" y1="512" x2="312" y2="512"/>
-    <line x1="712" y1="512" x2="938" y2="512"/>
+  <path d="M784,136 L808,208 L880,232 L808,256 L784,328 L760,256 L688,232 L760,208 Z" fill="#FFFFFF"/>
+  <g transform="rotate(-38 512 512)">
+    <rect x="120" y="456" width="80" height="120" rx="32" fill="#FFFFFF"/>
+    <rect x="176" y="432" width="608" height="168" rx="84" fill="#FFFFFF"/>
+    <rect x="744" y="400" width="96" height="232" rx="40" fill="#FFFFFF"/>
   </g>
-  <circle cx="512" cy="512" r="92" fill="url(#accent)"/>
 </svg>
