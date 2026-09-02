@@ -11,10 +11,6 @@
 </p>
 
 <p align="center">
-  <img src="assets/banner.png" alt="Telemaco banner" width="720" />
-</p>
-
-<p align="center">
   <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/AlbertoBarrago/telemaco/releases"><img src="https://img.shields.io/badge/Releases-blue?logo=github" alt="Releases" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License: Apache 2.0" /></a>
