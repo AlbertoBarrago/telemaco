@@ -1,20 +1,20 @@
-<p align="center">
+<div align="center">
   <img src="assets/icon.png?v=2" alt="Telemaco" width="80" />
-</p>
 
-<h1 align="center">Telemaco</h1>
+  <h1>Telemaco</h1>
 
-<p align="center">
-  <strong>Control the web with precision.</strong><br>
-  A headless browser engine in Rust, built for web scraping and AI agents.<br>
-  Real JavaScript, real DOM, native layout and paint. No Chromium required.
-</p>
+  <p>
+    <strong>Control the web with precision.</strong><br>
+    A headless browser engine in Rust, built for web scraping and AI agents.<br>
+    Real JavaScript, real DOM, native layout and paint. No Chromium required.
+  </p>
 
-<p align="center">
-  <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="https://github.com/AlbertoBarrago/telemaco/releases"><img src="https://img.shields.io/badge/Releases-blue?logo=github" alt="Releases" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License: Apache 2.0" /></a>
-</p>
+  <p>
+    <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+    <a href="https://github.com/AlbertoBarrago/telemaco/releases"><img src="https://img.shields.io/badge/Releases-blue?logo=github" alt="Releases" /></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License: Apache 2.0" /></a>
+  </p>
+</div>
 
 ---
 
