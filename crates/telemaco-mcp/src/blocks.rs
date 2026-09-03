@@ -83,6 +83,37 @@ fn make_block(lines: Vec<String>, start: usize) -> Block {
 /// Returns the pages as strings (each already joined with blank-line
 /// separators) and the total page count.
 pub fn pack_pages(markdown: &str, max_chars: usize) -> Vec<String> {
+    /// Split a single line longer than `max_chars` at the last word
+    /// boundary before the ceiling, so no page can exceed the limit even
+    /// when a block is one unbreakable line (e.g. a huge `<p>` converts
+    /// to a single line of markdown).
+    fn split_long_line(line: &str, max_chars: usize) -> Vec<String> {
+        let mut chunks = Vec::new();
+        let mut rest = line;
+        while rest.chars().count() > max_chars {
+            let cut = rest
+                .char_indices()
+                .nth(max_chars)
+                .map(|(i, _)| i)
+                .unwrap_or(rest.len());
+            // Back up to the last space before the cut; if none, cut hard.
+            let soft = rest[..cut]
+                .rfind(' ')
+                .map(|i| i + 1)
+                .unwrap_or(cut)
+                .max(1);
+            let (head, tail) = rest.split_at(soft);
+            if !head.is_empty() {
+                chunks.push(head.trim_end().to_string());
+            }
+            rest = tail;
+        }
+        if !rest.is_empty() {
+            chunks.push(rest.to_string());
+        }
+        chunks
+    }
+
     fn push_block(
         pages: &mut Vec<String>,
         current: &mut Vec<String>,
@@ -116,7 +147,13 @@ pub fn pack_pages(markdown: &str, max_chars: usize) -> Vec<String> {
                 current_chars = 0;
             }
             for line in block.lines {
-                push_block(&mut pages, &mut current, &mut current_chars, &line, max_chars);
+                if line.chars().count() > max_chars {
+                    for chunk in split_long_line(&line, max_chars) {
+                        push_block(&mut pages, &mut current, &mut current_chars, &chunk, max_chars);
+                    }
+                } else {
+                    push_block(&mut pages, &mut current, &mut current_chars, &line, max_chars);
+                }
             }
         } else {
             push_block(&mut pages, &mut current, &mut current_chars, &text, max_chars);
@@ -229,6 +266,35 @@ mod tests {
         for b in &blocks {
             assert!(roundtrip.contains(b), "lost block: {b}");
         }
+    }
+
+    #[test]
+    fn single_unbreakable_line_split_at_word_boundaries() {
+        // A huge <p> converts to one markdown line with no newlines: it
+        // must still respect the per-page ceiling.
+        let line: String = (0..2000).map(|i| format!("word{i}")).collect::<Vec<_>>().join(" ");
+        assert!(line.chars().count() > 12_000);
+        let doc = format!("{line}\n\ntail marker END-TOKEN\n");
+        let pages = pack_pages(&doc, 4000);
+        assert!(pages.len() >= 3, "pages: {}", pages.len());
+        for p in &pages {
+            assert!(p.chars().count() <= 4000 + 4, "page exceeds ceiling: {}", p.len());
+        }
+        let whole = pages.join("\n\n");
+        assert!(whole.starts_with("word0"), "head lost");
+        assert!(whole.contains("word1999"), "middle lost");
+        assert!(whole.contains("tail marker END-TOKEN"), "tail lost");
+    }
+
+    #[test]
+    fn no_space_long_line_still_respects_ceiling() {
+        let line = "x".repeat(9000);
+        let pages = pack_pages(&line, 4000);
+        assert!(pages.len() >= 2);
+        for p in &pages {
+            assert!(p.chars().count() <= 4000 + 4, "page exceeds ceiling: {}", p.len());
+        }
+        assert_eq!(pages.concat().chars().count(), 9000);
     }
 
     #[test]
