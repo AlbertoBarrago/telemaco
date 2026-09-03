@@ -133,6 +133,17 @@ enum Command {
         #[arg(long)]
         selector: Option<String>,
 
+        /// Narrow `--dump markdown` to blocks containing these keywords
+        /// (repeatable, case-insensitive). Keeps each hit, a window of
+        /// surrounding blocks, the heading chain above it, and the page
+        /// title. A summary of what was kept is printed to stderr.
+        #[arg(long)]
+        focus: Vec<String>,
+
+        /// Number of context blocks kept around each --focus hit.
+        #[arg(long, default_value_t = 1)]
+        focus_context: usize,
+
         /// Maximum adaptive post-load settle time in seconds. When supplied
         /// explicitly, this is a fixed delay; the default is a 5-second cap
         /// that returns once the page is quiescent.
@@ -419,6 +430,8 @@ async fn main() -> anyhow::Result<()> {
             url,
             dump,
             selector,
+            focus,
+            focus_context,
             wait,
             timeout,
             wait_until,
@@ -469,6 +482,8 @@ async fn main() -> anyhow::Result<()> {
                     &url,
                     dump,
                     selector,
+                    focus.clone(),
+                    focus_context,
                     wait.unwrap_or(5),
                     wait_is_fixed,
                     timeout,
@@ -681,6 +696,8 @@ async fn run_fetch(
     url_str: &str,
     dump: Option<DumpFormat>,
     selector: Option<String>,
+    focus: Vec<String>,
+    focus_context: usize,
     wait_secs: u64,
     wait_is_fixed: bool,
     timeout_secs: u64,
@@ -1082,6 +1099,26 @@ async fn run_fetch(
         // Handled above via the short-circuit branch; unreachable here.
         DumpFormat::Original => unreachable!("Original dump handled before page navigation"),
     };
+
+    // --focus narrows markdown output to keyword-bearing blocks. Applies to
+    // --dump markdown only; a warning is printed for other dump formats.
+    let rendered = if focus.is_empty() {
+        rendered
+    } else if dump != DumpFormat::Markdown {
+        eprintln!("Warning: --focus applies to --dump markdown only; ignoring it for this output format");
+        rendered
+    } else {
+        let out = focus::focus_filter(&rendered, &focus, focus_context);
+        if !quiet {
+            if out.matched {
+                eprintln!("focus: kept {} of {} blocks", out.kept, out.total);
+            } else {
+                eprintln!("focus: no blocks matched {:?}", focus);
+            }
+        }
+        out.text
+    };
+
     write_or_print(rendered, output.as_ref()).await?;
 
     // Save cookies to disk if storage_dir is configured
