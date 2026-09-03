@@ -2485,4 +2485,89 @@ mod tests {
             json!(r#"{"domChecked":true,"checkedCommitted":true,"checkTrusted":true,"selValue":"b","selectTrusted":true}"#),
         );
     }
+
+    // Real-site pagination check for browser_markdown. Ignored by default:
+    // needs network and a full render. Run with
+    // `cargo test -p telemaco-mcp --lib -- --ignored --nocapture`.
+    //
+    // Asserts three things:
+    //   1. the page spans multiple markdown pages, each carrying the
+    //      continuation marker
+    //   2. a known sentence (the 503 rate-limit note) survives when the
+    //      pages are read in sequence — pagination loses nothing
+    //   3. page>=2 is served from the cache, not re-converted: its wall
+    //      time must be a small fraction of the first conversion
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn salesforce_markdown_pagination_retains_and_caches() {
+        const URL: &str = "https://developer.salesforce.com/docs/atlas.en-us.chatterapi.meta/chatterapi/intro_what_is_chatter_connect.htm";
+        let mut state = BrowserState::new(None, None, false);
+        {
+            let page = state.page_mut();
+            page.set_navigation_timeout(std::time::Duration::from_secs(60));
+            page.navigate_with_wait(URL, telemaco_browser::lifecycle::WaitUntil::from_str("load"))
+                .await
+                .expect("navigate to Salesforce docs");
+            // SPA content mounts after load; same settle the CLI does.
+            page.settle(5000).await;
+        }
+        let url = state.page_mut().url_string();
+
+        let t0 = std::time::Instant::now();
+        let p1 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("page 1");
+        let convert_elapsed = t0.elapsed();
+        assert!(
+            state.markdown_cache.as_ref().expect("cache seeded").0 == url,
+            "cache keyed by page URL"
+        );
+
+        // Every page beyond the first is a pure cache hit: ~0 work.
+        let t1 = std::time::Instant::now();
+        let p2 = tool_markdown(&json!({ "page": 2 }), &mut state).expect("page 2");
+        let cached_elapsed = t1.elapsed();
+        assert!(
+            cached_elapsed < convert_elapsed / 20,
+            "page 2 must be a cache hit: convert {:?} vs cached {:?}",
+            convert_elapsed,
+            cached_elapsed
+        );
+        assert!(p2.contains("page 2 of"), "p2 marker missing: {p2}");
+
+        // Walk the whole document page by page.
+        let total = p1.split("page 1 of ")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse::<usize>().ok())
+            .expect("p1 carries a total page count");
+        assert!(total >= 2, "expected multi-page document, got {total}");
+
+        let mut whole = String::new();
+        for page_no in 1..=total {
+            let out = tool_markdown(&json!({ "page": page_no }), &mut state)
+                .unwrap_or_else(|e| panic!("page {page_no}: {e}"));
+            assert!(
+                !out.contains("beyond the end"),
+                "page {page_no} of {total} out of range"
+            );
+            if !whole.is_empty() {
+                whole.push_str("\n\n");
+            }
+            whole.push_str(out.trim_end());
+        }
+
+        assert!(
+            whole.contains("503 Service Unavailable"),
+            "the 503 note must survive pagination"
+        );
+        assert!(
+            whole.contains("Connect REST API"),
+            "the page title content must survive pagination"
+        );
+        println!(
+            "salesforce markdown: {total} pages, convert {:?}, cached read {:?}, whole {} chars",
+            convert_elapsed,
+            cached_elapsed,
+            whole.len()
+        );
+    }
 }
