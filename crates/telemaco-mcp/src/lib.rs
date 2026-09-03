@@ -78,6 +78,11 @@ pub struct BrowserState {
     /// table is wiped on every navigation / tab switch and refilled on
     /// the next snapshot call.
     interactive_refs: HashMap<String, NodeId>,
+    /// Full-page markdown from the last `browser_markdown` conversion,
+    /// keyed by page URL, so `page=N` requests slice a cached document
+    /// instead of re-running the V8 converter on every call. Cleared on
+    /// navigation; `refresh: true` forces re-conversion.
+    markdown_cache: Option<(String, String)>,
 }
 
 impl BrowserState {
@@ -90,6 +95,7 @@ impl BrowserState {
             user_agent,
             console_messages: Vec::new(),
             interactive_refs: HashMap::new(),
+            markdown_cache: None,
         }
     }
 
@@ -450,11 +456,13 @@ fn handle_tools_list(id: Value) -> RpcResponse {
             },
             {
                 "name": "browser_markdown",
-                "description": "Extract the current page as Markdown (headings, paragraphs, lists, links, code blocks). Use this instead of browser_snapshot when you want token-dense structured content rather than plain text.",
+                "description": "Extract the current page as Markdown (headings, paragraphs, lists, links, code blocks). Use this instead of browser_snapshot when you want token-dense structured content rather than plain text. The document is paginated at block boundaries: the first call converts the page once and returns page 1; pass page=2, 3, ... to read further chunks without re-converting.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "max_chars": { "type": "number", "description": "Truncate to this many characters (default 4000)" }
+                        "max_chars": { "type": "number", "description": "Max characters per page (default 4000). Blocks are never cut in half; an oversized block is split across pages." },
+                        "page": { "type": "number", "description": "1-based page to read. Default 1. Pages beyond the end return an explicit out-of-range message." },
+                        "refresh": { "type": "boolean", "description": "Force re-conversion of the current page instead of serving the cached markdown" }
                     }
                 }
             },
@@ -947,6 +955,9 @@ async fn tool_navigate(args: &Value, state: &mut BrowserState) -> Result<String,
     let summary = format!("Navigated to {} — \"{}\"", page.url_string(), page.title);
     // DOM changed — invalidate the ref table. Next snapshot will rebuild.
     state.interactive_refs.clear();
+    // DOM changed — the markdown cache is stale even if the URL is the
+    // same (refresh of the same page). Next browser_markdown re-converts.
+    state.markdown_cache = None;
     Ok(summary)
 }
 
@@ -1203,13 +1214,47 @@ fn tool_close(state: &mut BrowserState) -> Result<String, String> {
 /// Convert the rendered page to Markdown by running the JS-side converter
 /// already used by `telemaco fetch --dump markdown`. More token-dense than
 /// browser_snapshot for content-heavy pages (article bodies, docs sites).
+///
+/// The full document is converted once and cached per URL; the `page`
+/// parameter (1-based) returns successive block-boundary chunks of the
+/// cached document without touching V8 again. `refresh: true` forces
+/// re-conversion of the current page.
 fn tool_markdown(args: &Value, state: &mut BrowserState) -> Result<String, String> {
     let max_chars = args.get("max_chars").and_then(Value::as_u64).map(|n| n as usize)
-        .unwrap_or(DEFAULT_TEXT_LIMIT);
-    let page = state.page_mut();
-    let result = page.evaluate(telemaco_browser::HTML_TO_MARKDOWN_JS);
-    let md = result.as_str().unwrap_or_default();
-    Ok(truncate(md, max_chars))
+        .unwrap_or(DEFAULT_TEXT_LIMIT).max(1);
+    let page_no = args.get("page").and_then(Value::as_u64).map(|n| n as usize)
+        .unwrap_or(1).max(1);
+    let refresh = args.get("refresh").and_then(Value::as_bool).unwrap_or(false);
+
+    let url = state.page_mut().url_string();
+    let md: String = match &state.markdown_cache {
+        Some((cached_url, cached_md)) if !refresh && cached_url == &url => cached_md.clone(),
+        _ => {
+            let page = state.page_mut();
+            let result = page.evaluate(telemaco_browser::HTML_TO_MARKDOWN_JS);
+            let md = result.as_str().unwrap_or_default().to_string();
+            state.markdown_cache = Some((url, md.clone()));
+            md
+        }
+    };
+
+    let (text, total) = blocks::paginate(&md, max_chars, page_no);
+    if total == 0 {
+        return Ok("(empty page — nothing to convert)".to_string());
+    }
+    if text.is_empty() {
+        return Ok(format!(
+            "Page {page_no} is beyond the end of this document ({total} page(s) total). Call browser_markdown with page=1..{total}."
+        ));
+    }
+    if page_no < total {
+        Ok(format!(
+            "{text}\n\n<!-- markdown page {page_no} of {total} — call browser_markdown with page={} for more -->",
+            page_no + 1
+        ))
+    } else {
+        Ok(format!("{text}\n\n<!-- markdown page {page_no} of {total} — end of document -->"))
+    }
 }
 
 /// Enumerate every `<a href>` on the page. One JSON object per line so
@@ -2039,6 +2084,91 @@ mod tests {
     fn listed_tools() -> Vec<Value> {
         handle_tools_list(json!(1)).result.expect("tools/list result")
             .get("tools").and_then(Value::as_array).cloned().expect("tools array")
+    }
+
+    // browser_markdown pagination against a manually-seeded cache: the
+    // cache-hit path never calls page.evaluate, so no V8 is needed.
+    fn seeded_state(url: &str, md: &str) -> BrowserState {
+        let mut state = BrowserState::new(None, None, false);
+        // Touch page_mut so the active tab exists and url_string() is set.
+        let _ = state.page_mut();
+        state.markdown_cache = Some((url.to_string(), md.to_string()));
+        state
+    }
+
+    fn tool_markdown_page(state: &mut BrowserState, page: u64, max_chars: usize) -> String {
+        tool_markdown(&json!({ "page": page, "max_chars": max_chars }), state)
+            .expect("tool_markdown ok")
+    }
+
+    #[test]
+    fn browser_markdown_serves_cached_pages_without_reconversion() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        // Small ceiling forces multiple pages from the cached document.
+        let p1 = tool_markdown_page(&mut state, 1, 12);
+        assert!(p1.contains("alpha"));
+        assert!(p1.contains("page 1 of"), "marker missing: {p1}");
+        let p2 = tool_markdown_page(&mut state, 2, 12);
+        assert!(p2.contains("beta"), "p2: {p2}");
+        assert!(p2.contains("page 2 of 4"), "p2: {p2}");
+        // Cache untouched: still the same document.
+        assert_eq!(state.markdown_cache.as_ref().unwrap().1, doc);
+    }
+
+    #[test]
+    fn browser_markdown_last_page_says_end() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        let (_, total) = blocks::paginate(doc, 12, 1);
+        let last = tool_markdown_page(&mut state, total as u64, 12);
+        assert!(last.contains("end of document"));
+        assert!(last.contains(&format!("page {total} of {total}")));
+    }
+
+    #[test]
+    fn browser_markdown_beyond_end_is_explicit() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        let (_, total) = blocks::paginate(doc, 12, 1);
+        let out = tool_markdown_page(&mut state, total as u64 + 5, 12);
+        assert!(out.contains("beyond the end"));
+        assert!(out.contains(&format!("{total} page(s) total")));
+    }
+
+    #[test]
+    fn browser_markdown_url_change_invalidates_cache() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        // Active tab URL differs from the cached URL: the cached document
+        // must not be served; re-conversion of a blank page yields "".
+        state.markdown_cache = Some(("https://other.example".to_string(), doc.to_string()));
+        let out = tool_markdown(&json!({ "page": 1 }), &mut state).unwrap();
+        assert!(out.contains("empty page"));
+        // The empty conversion replaced the stale cache entry.
+        let (url, md) = state.markdown_cache.as_ref().unwrap();
+        assert_eq!(url, "about:blank");
+        assert_eq!(md, "");
+    }
+
+    #[test]
+    fn browser_markdown_refresh_forces_reconversion() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        let out = tool_markdown(&json!({ "page": 1, "refresh": true }), &mut state).unwrap();
+        // Blank page converts to nothing; cache replaced with "".
+        assert!(out.contains("empty page"));
+        assert_eq!(state.markdown_cache.as_ref().unwrap().1, "");
+    }
+
+    #[test]
+    fn browser_markdown_schema_documents_pagination() {
+        let tools = listed_tools();
+        let md = tools.iter().find(|tool| tool["name"] == "browser_markdown")
+            .expect("browser_markdown tool");
+        assert!(md["inputSchema"]["properties"]["page"].is_object());
+        assert!(md["inputSchema"]["properties"]["refresh"].is_object());
+        assert!(md["description"].as_str().unwrap().contains("paginated"));
     }
 
     #[test]
