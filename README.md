@@ -8,12 +8,6 @@
     A headless browser engine in Rust, built for web scraping and AI agents.<br>
     Real JavaScript, real DOM, native layout and paint. No Chromium required.
   </p>
-
-  <p>
-    <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="https://github.com/AlbertoBarrago/telemaco/releases"><img src="https://img.shields.io/badge/Releases-blue?logo=github" alt="Releases" /></a>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue" alt="License: Apache 2.0" /></a>
-  </p>
 </div>
 
 ---
@@ -359,7 +353,3 @@ residential and ISP proxies, sticky sessions, and per-country targeting
 through the proxy username. Route Telemaco through it with the global
 `--proxy` flag. Discount codes: `TELEMACO35` (35% off mobile and residential),
 `TELEMACO40` (40% off ISP and static).
-
-## License
-
-Apache-2.0. See [LICENSE](LICENSE).
