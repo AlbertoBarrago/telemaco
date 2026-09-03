@@ -92,12 +92,6 @@ edit instead.
 - **telemaco-mcp** — stateful MCP automation tools. Render builds expose
   `browser_screenshot` and `browser_pdf`; streaming screencasts remain CDP-only.
 - **telemaco** — embeddable Rust library API (git dependency; builds V8 locally, not on crates.io). Public request-interception API on `Page`: `add_preload_script`, `enable_interception` (channel of `InterceptedRequest`, resolved with `InterceptResolution::{Continue, Fulfill, Fail}`), and passive `on_request` / `on_response`. `op_fetch_url` invokes these for JS `fetch()`/XHR, so when touching it keep a `Continue` URL rewrite behind `validate_fetch_url` (the SSRF gate, same as redirects).
-- **telemaco-gui** — native egui window over the engine. Embeds the CDP layer
-  in-process on a background thread (CdpContext + dispatch, the telemaco-mcp
-  pattern), streams Page.captureScreenshot frames into the window, and sends
-  trusted Input events back. Requires the `render` feature (its default). No
-  engine crate changes; build/test scoped with `-p telemaco-gui`.
-
 ## Conventions
 
 - **Performance is a hard constraint** (Telemaco is ~12x faster and uses ~6x less

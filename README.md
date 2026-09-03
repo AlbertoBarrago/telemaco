@@ -45,8 +45,6 @@ framework pages, with the same CDP automation surface.
   Puppeteer, Playwright, and chromiumoxide connect out of the box.
 - **MCP server**: stateful browser automation tools for Claude Desktop, Cursor,
   and any MCP client, over stdio or HTTP.
-- **Interactive GUI**: native window with live page streaming, trusted input,
-  and history navigation (`telemaco-gui`, macOS `.dmg` packaging included).
 - **Hardened by default**: SSRF guards on loopback, RFC1918, and link-local
   targets; a V8 termination watchdog per page; process-level hard deadlines, so
   one bad page can never hang a worker.
@@ -230,24 +228,6 @@ await page.screenshot({ path: 'page.png', fullPage: true });
 await page.pdf({ path: 'page.pdf', format: 'A4', printBackground: true });
 ```
 
-### Native GUI
-
-```bash
-cargo build --release -p telemaco-gui
-./target/release/telemaco-gui https://example.com
-```
-
-A native egui window over the embedded engine: omnibar navigation, back and
-forward, live page streaming, and trusted mouse, keyboard, and scroll input.
-Screenshots stream at up to 120 ms pacing while the page is active and fall
-back to 450 ms when idle. Local pages need `--allow-private-network`.
-
-Package a macOS app:
-
-```bash
-scripts/make-dmg.sh   # produces Telemaco.dmg
-```
-
 ## MCP (Model Context Protocol)
 
 Telemaco ships an MCP server that exposes browser automation tools to AI
@@ -327,7 +307,6 @@ surface: screenshot, screencast, PDF, CDP, and MCP all keep working.
 | `telemaco-render` | Selector cascade, retained layout, paint, screenshots, PDF |
 | `telemaco-mcp` | Stateful MCP automation tools |
 | `telemaco` | Embeddable Rust library API |
-| `telemaco-gui` | Native egui window over the engine |
 
 ## Testing
 

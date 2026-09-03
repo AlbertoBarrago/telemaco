@@ -17,7 +17,6 @@ Il build locale esiste già in `target/release/`:
 |---|---|
 | `telemaco` | CLI: `fetch`, `serve` (server CDP), `scrape`, `mcp` |
 | `telemaco-worker` | Worker per lo scraping parallelo (serve accanto a `telemaco` per `scrape`) |
-| `telemaco-gui` | Finestra nativa con rendering live della pagina |
 
 Il build attuale ha il **rendering attivo** (screenshot e PDF funzionano), ma
 **non** la feature `stealth` completa: il flag `--stealth` funziona (impronta
@@ -46,8 +45,7 @@ CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features rend
 # Rendering + stealth completo (wreq/BoringSSL, serve cmake installato)
 CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features render,stealth
 
-# GUI (richiede la feature render, che è default per quel crate)
-cargo build --release -p telemaco-gui
+
 ```
 
 Requisiti: Rust 1.75+ (`rustup.rs`). Per lo stealth serve anche CMake + Clang.
@@ -264,18 +262,7 @@ printf '%s\n%s\n%s\n' \
 # -> 37
 ```
 
-## 8. GUI
-
-```bash
-./target/release/telemaco-gui https://example.com
-```
-
-Finestra nativa con omnibar, back/forward, streaming live della pagina e input
-reale (mouse, tastiera, scroll). Per aprire pagine locali aggiungi
-`--allow-private-network`. Per pacchettizzare l'app macOS:
-`scripts/make-dmg.sh` (produce `Telemaco.dmg`).
-
-## 9. Flag globali e variabili d'ambiente
+## 8. Flag globali e variabili d'ambiente
 
 Valgono prima o dopo il sottocomando, su `fetch`, `serve`, `scrape` e `mcp`:
 
@@ -300,9 +287,9 @@ Variabili d'ambiente utili (elenco completo in `docs/Environment-variables.md`):
 | `TELEMACO_TIMEZONE` | Europe/Berlin | Fissa il fuso (coerente con il proxy) |
 | `TELEMACO_PROXY` | — | Proxy di default per i worker di `scrape` |
 
-## 10. Test
+## 9. Test
 
-### 10.1 Smoke test CLI (offline, ~1 minuto)
+### 9.1 Smoke test CLI (offline, ~1 minuto)
 
 Verifiche end-to-end sul binario con una fixture locale: nessuna rete
 esterna, nessun sito da controllare. Copia e incolla tutto in un terminale;
@@ -407,7 +394,7 @@ kill $HTTPD $SVR 2>/dev/null
 [ "$FAILED" = "0" ] && echo "TUTTI I TEST PASSANO" || echo "CI SONO FALLIMENTI"
 ```
 
-### 10.2 Suite Rust
+### 9.2 Suite Rust
 
 **Usa `cargo nextest`, non `cargo test`**: il motore ha un solo isolato V8 per
 processo, quindi i test runtime falliscono con `cargo test`. Nextest esegue
@@ -423,7 +410,7 @@ cargo nextest run --release --features render --no-fail-fast
 cargo nextest run --release --features render -p telemaco-cli
 ```
 
-### 10.3 Obstacle course
+### 9.3 Obstacle course
 
 Il gate comportamentale è l'obstacle course nel repo companion
 `telemaco-benchmark` (33 stadi, attesi 33/33, tutto offline; il repo va
@@ -433,7 +420,7 @@ clonato a parte):
 TELEMACO_BIN=./target/release/telemaco python3 obstacle-course/run.py --runs 1 --warmup 0
 ```
 
-## 11. Problemi comuni
+## 10. Problemi comuni
 
 | Sintomo | Causa e rimedio |
 |---|---|
@@ -446,4 +433,4 @@ TELEMACO_BIN=./target/release/telemaco python3 obstacle-course/run.py --runs 1 -
 | `--v8-flags` rifiutato dopo il sottocomando | Non è globale: va prima, es. `$T --v8-flags "..." fetch ...` (§3) |
 | `--selector` sembra non filtrare l'output | Comportamento corretto: attende l'elemento e poi fa il dump completo (§3) |
 | Build lentissima la prima volta | Normale: compila V8 (~5 min). Le successive sono in secondi; usa `-p` per limitare il perimetro |
-| Test runtime falliti con `cargo test` | Non usare `cargo test`: usa `cargo nextest run` (§10.2) |
+| Test runtime falliti con `cargo test` | Non usare `cargo test`: usa `cargo nextest run` (§9.2) |

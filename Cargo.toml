@@ -10,7 +10,6 @@ members = [
     "crates/telemaco-render",
     "crates/telemaco-cli",
     "crates/telemaco",
-    "crates/telemaco-gui",
 ]
 
 [workspace.package]
