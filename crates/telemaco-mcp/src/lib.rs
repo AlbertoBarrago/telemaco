@@ -3,6 +3,7 @@
 // limit (128) overflows. Bumping for this crate only.
 #![recursion_limit = "512"]
 
+pub mod blocks;
 pub mod http;
 
 use std::collections::HashMap;

@@ -1,9 +1,12 @@
 //! Keyword-based content narrowing for markdown output.
 //!
 //! Splits a markdown document into blocks (paragraphs, headings, list
-//! items, code fences) and keeps only the blocks that contain at least
-//! one of the focus keywords, plus a window of surrounding blocks and
-//! the heading chain above each hit. Document title is always kept.
+//! items, code fences — see `telemaco_mcp::blocks`) and keeps only the
+//! blocks that contain at least one of the focus keywords, plus a window
+//! of surrounding blocks and the heading chain above each hit. Document
+//! title is always kept.
+
+use telemaco_mcp::blocks::{split_blocks, Block};
 
 /// Result of applying a focus filter.
 pub struct FocusOutcome {
@@ -15,78 +18,6 @@ pub struct FocusOutcome {
     pub total: usize,
     /// Whether any block directly matched a keyword.
     pub matched: bool,
-}
-
-/// One markdown block: a run of consecutive non-blank lines, with blank
-/// lines inside fenced code blocks kept internal to the block.
-struct Block {
-    lines: Vec<String>,
-    start: usize,
-    /// Index of the heading this block starts with, if any.
-    heading_level: Option<usize>,
-}
-
-/// Split markdown into blocks, respecting fenced code blocks so that
-/// blank lines inside a fence do not split it.
-fn split_blocks(markdown: &str) -> Vec<Block> {
-    let mut blocks = Vec::new();
-    let mut current: Vec<String> = Vec::new();
-    let mut start = 0usize;
-    let mut in_fence = false;
-
-    for (i, line) in markdown.lines().enumerate() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            if !current.is_empty() {
-                current.push(line.to_string());
-            } else {
-                start = i;
-                current.push(line.to_string());
-            }
-            in_fence = !in_fence;
-            continue;
-        }
-        if line.trim().is_empty() && !in_fence {
-            if !current.is_empty() {
-                blocks.push(make_block(current, start));
-                current = Vec::new();
-            }
-            continue;
-        }
-        if current.is_empty() {
-            start = i;
-        }
-        current.push(line.to_string());
-    }
-    if !current.is_empty() {
-        blocks.push(make_block(current, start));
-    }
-    blocks
-}
-
-fn make_block(lines: Vec<String>, start: usize) -> Block {
-    let heading_level = lines
-        .first()
-        .and_then(|l| {
-            let t = l.trim_start();
-            let hashes = t.bytes().take_while(|&b| b == b'#').count();
-            if (1..=6).contains(&hashes) && t.as_bytes().get(hashes) == Some(&b' ') {
-                Some(hashes)
-            } else {
-                None
-            }
-        });
-    Block {
-        lines,
-        start,
-        heading_level,
-    }
-}
-
-impl Block {
-    fn text(&self) -> String {
-        self.lines.join("\n")
-    }
 }
 
 /// Case-insensitive substring match for one block.
