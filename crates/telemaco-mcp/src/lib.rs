@@ -2599,4 +2599,107 @@ mod tests {
             cached_elapsed
         );
     }
+
+    // Local-fixture E2E: a page whose paragraph is a single unbreakable
+    // ~13k-char markdown line plus a large code fence. Pins the ceiling
+    // guarantee (no page ever exceeds max_chars), losslessness across
+    // pages, and the cache-hit latency for pages >= 2.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires a local http.server on 127.0.0.1:8931"]
+    async fn local_giant_blocks_respect_ceiling_and_losslessness() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        const URL: &str = "http://127.0.0.1:8931/site/giant.html";
+        let mut state = BrowserState::new(None, None, false);
+        navigate_to(URL, &mut state).await;
+
+        let p1 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("page 1");
+        let total = page_total(&p1);
+        assert!(total >= 3, "giant fixture should span >= 3 pages, got {total}");
+
+        let mut whole = String::new();
+        for page_no in 1..=total {
+            let out = tool_markdown(&json!({ "page": page_no }), &mut state)
+                .unwrap_or_else(|e| panic!("page {page_no}: {e}"));
+            // Ceiling: body (marker excluded) never exceeds max_chars.
+            let body = out.split("\n\n<!-- markdown page").next().unwrap_or(&out);
+            assert!(
+                body.chars().count() <= 4000,
+                "page {page_no} exceeds the ceiling: {} chars",
+                body.len()
+            );
+            if !whole.is_empty() {
+                whole.push_str("\n\n");
+            }
+            whole.push_str(out.trim_end());
+        }
+
+        // Losslessness: head, tail, and both fence ends survive.
+        assert!(whole.contains("HEAD-SENTENCE-START"), "paragraph head lost");
+        assert!(whole.contains("TAIL-SENTENCE-END"), "paragraph tail lost");
+        assert!(whole.contains("TOKEN-FENCE-HEAD"), "fence head lost");
+        assert!(whole.contains("TOKEN-FENCE-TAIL"), "fence tail lost");
+        println!("giant fixture: {total} pages, whole {} chars", whole.len());
+    }
+
+    // Local-fixture E2E: navigation must invalidate or re-key the cache —
+    // browser_markdown after navigating elsewhere must never serve the
+    // previous page's cached document.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires a local http.server on 127.0.0.1:8931"]
+    async fn local_navigation_rekeys_markdown_cache() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        const A: &str = "http://127.0.0.1:8931/site/article.html";
+        const B: &str = "http://127.0.0.1:8931/site/giant.html";
+        let mut state = BrowserState::new(None, None, false);
+
+        navigate_to(A, &mut state).await;
+        let md_a = tool_markdown(&json!({ "page": 1 }), &mut state).expect("md A");
+        assert!(md_a.contains("Rust ownership rules"), "page A content: {md_a}");
+
+        navigate_to(B, &mut state).await;
+        let md_b = tool_markdown(&json!({ "page": 1 }), &mut state).expect("md B");
+        assert!(md_b.contains("Giant Block Fixture"), "page B content: {md_b}");
+        assert!(
+            !md_b.contains("Rust ownership rules"),
+            "stale page A content leaked into page B"
+        );
+
+        // Back to A: cache was keyed to B (or cleared), must re-convert.
+        navigate_to(A, &mut state).await;
+        let md_a2 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("md A again");
+        assert!(md_a2.contains("Rust ownership rules"), "page A re-navigation: {md_a2}");
+        assert!(!md_a2.contains("Giant Block Fixture"), "stale page B leaked back");
+    }
+
+    // Real-site E2E: two tabs on different sites, markdown interleaved.
+    // The cache is keyed by the ACTIVE tab's URL: switching tabs must
+    // re-key, and repeated interleaved reads must always return the right
+    // site's content, never a cross-contaminated document.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn tab_interleaved_markdown_never_cross_contaminates() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        let mut state = BrowserState::new(None, None, false);
+
+        // Tab 1: example.com (single-page doc).
+        navigate_to("https://example.com", &mut state).await;
+        let md_example = tool_markdown(&json!({ "page": 1 }), &mut state).expect("example.com");
+        assert!(md_example.contains("Example Domain"));
+        assert!(md_example.contains("end of document"), "example.com fits one page");
+
+        // Tab 2: docs.rs (multi-page doc) via a new tab.
+        let _tab2 = tool_tab_new(&json!({}), &mut state).await.expect("tab 2");
+        navigate_to("https://docs.rs/serde/latest/serde/", &mut state).await;
+        let md_docs = tool_markdown(&json!({ "page": 1 }), &mut state).expect("docs.rs");
+        assert!(md_docs.contains("serde"), "docs.rs content: {md_docs}");
+
+        // Switch back to tab 1: content must be example.com again.
+        tool_tab_switch(&json!({ "tab_id": "tab-1" }), &mut state).expect("switch to tab-1");
+        let md_example2 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("example again");
+        assert!(md_example2.contains("Example Domain"));
+        assert!(
+            !md_example2.contains("serde"),
+            "docs.rs content leaked into example.com tab"
+        );
+    }
 }
