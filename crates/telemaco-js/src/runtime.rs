@@ -3338,6 +3338,66 @@ mod tests {
     }
 
     #[test]
+    fn focus_and_blur_fire_browser_order_events() {
+        let mut rt = setup_runtime(
+            "<html><body><input id=\"a\"><input id=\"b\"></body></html>",
+        );
+        rt.evaluate(
+            r#"(() => {
+                globalThis.__order = [];
+                for (const id of ['a', 'b']) {
+                    const el = document.getElementById(id);
+                    for (const t of ['blur', 'focusout', 'focus', 'focusin']) {
+                        el.addEventListener(t, e => globalThis.__order.push(id + ':' + t));
+                    }
+                }
+                return 'ok';
+            })()"#,
+        )
+        .unwrap();
+
+        // Focusing with nothing focused fires only the gaining side.
+        rt.evaluate("document.getElementById('b').focus()").unwrap();
+        assert_eq!(
+            rt.evaluate("globalThis.__order.join(',')").unwrap(),
+            serde_json::json!("b:focus,b:focusin")
+        );
+        assert_eq!(
+            rt.evaluate("document.activeElement && document.activeElement.id").unwrap(),
+            serde_json::json!("b")
+        );
+
+        // Moving focus fires blur, focusout on the old element, then focus,
+        // focusin on the new one - the browser order.
+        rt.evaluate("document.getElementById('a').focus()").unwrap();
+        assert_eq!(
+            rt.evaluate("globalThis.__order.join(',')").unwrap(),
+            serde_json::json!("b:focus,b:focusin,b:blur,b:focusout,a:focus,a:focusin")
+        );
+
+        // Refocusing the active element is a no-op.
+        rt.evaluate("document.getElementById('a').focus()").unwrap();
+        assert_eq!(
+            rt.evaluate("globalThis.__order.join(',')").unwrap(),
+            serde_json::json!("b:focus,b:focusin,b:blur,b:focusout,a:focus,a:focusin"),
+            "refocusing the active element must fire nothing"
+        );
+
+        // blur clears activeElement and fires blur, focusout.
+        rt.evaluate("document.getElementById('a').blur()").unwrap();
+        assert_eq!(
+            rt.evaluate("globalThis.__order.join(',')").unwrap(),
+            serde_json::json!(
+                "b:focus,b:focusin,b:blur,b:focusout,a:focus,a:focusin,a:blur,a:focusout"
+            )
+        );
+        assert_eq!(
+            rt.evaluate("document.activeElement && document.activeElement.tagName").unwrap(),
+            serde_json::json!("BODY")
+        );
+    }
+
+    #[test]
     fn function_to_string_has_native_function_shape() {
         let mut rt = setup_runtime("<html><body></body></html>");
 

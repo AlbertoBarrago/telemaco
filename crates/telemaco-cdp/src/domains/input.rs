@@ -126,6 +126,11 @@ pub async fn handle(
                             globalThis.__telemaco_mouse_down = {{target:target,button:{button_code},clickCount:{click_count}}};\
                             var evt = globalThis.__telemaco_markTrusted(new MouseEvent('mousedown', {{bubbles:true,cancelable:true,view:globalThis,clientX:{x},clientY:{y},button:{button_code},buttons:{buttons},detail:{click_count},altKey:{alt_key},ctrlKey:{ctrl_key},metaKey:{meta_key},shiftKey:{shift_key}}}));\
                             target.dispatchEvent(evt);\
+                            if (!evt.defaultPrevented) {{\
+                                var ft = target;\
+                                while (ft && !globalThis.__telemaco_isFocusable(ft)) ft = ft.parentElement;\
+                                if (ft && typeof ft.focus === 'function') ft.focus();\
+                            }}\
                         }})()",
                         x = x,
                         y = y,
@@ -196,6 +201,7 @@ pub async fn handle(
                             var interactiveHost = globalThis.__telemaco_interactiveHost(clickTarget);\
                             if (labelHost && !(interactiveHost && labelHost.contains(interactiveHost))) {{\
                                 var ctl = globalThis.__telemaco_labeledControl(labelHost);\
+                                if (ctl && globalThis.__telemaco_isFocusable(ctl) && typeof ctl.focus === 'function') ctl.focus();\
                                 if (ctl && ctl !== clickTarget && globalThis.__telemaco_activateLabel(labelHost, ctl, true)) {{ return; }}\
                             }}\
                             var link = clickTarget.closest ? clickTarget.closest('a[href]') : null;\
@@ -329,7 +335,7 @@ pub async fn handle(
                             "(function() {{\
                                 var target = document.activeElement || document.body;\
                                 var evt = globalThis.__telemaco_markTrusted(new KeyboardEvent('keydown', {{bubbles:true,cancelable:true,key:'{key}',code:'{code}'}}));\
-                                target.dispatchEvent(evt);\
+                                return target.dispatchEvent(evt);\
                             }})()",
                             // Escape backslash BEFORE single-quote (as the text
                             // path below does) so a key like "\" — Chrome's
@@ -338,9 +344,13 @@ pub async fn handle(
                             key = key.replace('\\', "\\\\").replace('\'', "\\'"),
                             code = code.replace('\\', "\\\\").replace('\'', "\\'"),
                         );
-                        page.evaluate(&js);
+                        // dispatchEvent returns false when a listener cancels
+                        // the keydown; a real browser then neither inserts the
+                        // key's text nor fires keypress, and Puppeteer typing
+                        // must observe the same rule.
+                        let allowed = page.evaluate(&js).as_bool().unwrap_or(true);
 
-                        if !text.is_empty() && text != "\r" && text != "\n" {
+                        if !text.is_empty() && text != "\r" && text != "\n" && allowed {
                             page.evaluate(&insert_text_js(text));
                         }
 
@@ -382,7 +392,67 @@ pub async fn handle(
                     }
                     "char" => {
                         if !text.is_empty() {
-                            page.evaluate(&insert_text_js(text));
+                            // A printable character still surfaces as keydown,
+                            // keypress and keyup the way a physical key would:
+                            // shells that render typed text from document-level
+                            // keydown handlers (terminal widgets with no input
+                            // element) only ever see the page through those
+                            // events. A preventDefault on keydown suppresses the
+                            // insertion and the keypress, exactly as in Chrome;
+                            // keyup fires regardless.
+                            let chars: Vec<char> = text.chars().collect();
+                            if chars.len() == 1 && !chars[0].is_control() {
+                                let key = chars[0].to_string();
+                                let code = match chars[0] {
+                                    'a'..='z' => format!("Key{}", chars[0].to_ascii_uppercase()),
+                                    'A'..='Z' => format!("Key{}", chars[0]),
+                                    '0'..='9' => format!("Digit{}", chars[0]),
+                                    ' ' => "Space".to_string(),
+                                    _ => String::new(),
+                                };
+                                // JSON string literals embed cleanly (the same
+                                // trick insert_text_js uses), so printable
+                                // punctuation like a quote can't break out.
+                                let key_lit =
+                                    serde_json::to_string(&key).unwrap_or_else(|_| "\"\"".to_string());
+                                let code_lit =
+                                    serde_json::to_string(&code).unwrap_or_else(|_| "\"\"".to_string());
+                                let js = format!(
+                                    "(function() {{\
+                                        var target = document.activeElement || document.body;\
+                                        var evt = globalThis.__telemaco_markTrusted(new KeyboardEvent('keydown', {{bubbles:true,cancelable:true,key:{key},code:{code}}}));\
+                                        return target.dispatchEvent(evt);\
+                                    }})()",
+                                    key = key_lit,
+                                    code = code_lit,
+                                );
+                                let allowed = page.evaluate(&js).as_bool().unwrap_or(true);
+                                if allowed {
+                                    page.evaluate(&insert_text_js(text));
+                                    let js = format!(
+                                        "(function() {{\
+                                            var target = document.activeElement || document.body;\
+                                            target.dispatchEvent(globalThis.__telemaco_markTrusted(new KeyboardEvent('keypress', {{bubbles:true,cancelable:true,key:{key},code:{code}}})));\
+                                            target.dispatchEvent(globalThis.__telemaco_markTrusted(new KeyboardEvent('keyup', {{bubbles:true,key:{key},code:{code}}})));\
+                                        }})()",
+                                        key = key_lit,
+                                        code = code_lit,
+                                    );
+                                    page.evaluate(&js);
+                                } else {
+                                    let js = format!(
+                                        "(function() {{\
+                                            var target = document.activeElement || document.body;\
+                                            target.dispatchEvent(globalThis.__telemaco_markTrusted(new KeyboardEvent('keyup', {{bubbles:true,key:{key},code:{code}}})));\
+                                        }})()",
+                                        key = key_lit,
+                                        code = code_lit,
+                                    );
+                                    page.evaluate(&js);
+                                }
+                            } else {
+                                page.evaluate(&insert_text_js(text));
+                            }
                             // Pump event loop so Angular change detection picks up the input
                             page.settle(50).await;
                         }

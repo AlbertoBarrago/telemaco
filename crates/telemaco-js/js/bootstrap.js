@@ -2734,10 +2734,28 @@ globalThis.__telemaco_labeledControl = function(label) { return _labeledControl(
 globalThis.__telemaco_interactiveHost = function(el) {
   return el && el.closest ? el.closest(_INTERACTIVE) : null;
 };
+// Click-to-focus for the CDP Input domain: a real browser moves focus on
+// mousedown to the clicked control or its nearest focusable ancestor, which
+// is what lets typed text reach form fields. Mirrors the focusability notion
+// closely enough for typing: a control (input/textarea/select/button), a
+// summary, a link with href, a contenteditable host, or anything carrying a
+// non-negative tabindex. Disabled controls are never focusable.
+globalThis.__telemaco_isFocusable = function(el) {
+  if (!el || el.nodeType !== 1 || globalThis.__telemaco_isDisabled(el)) return false;
+  var tag = el.tagName;
+  if (tag === 'INPUT') return ((el.getAttribute('type') || '').toLowerCase()) !== 'hidden';
+  if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON' || tag === 'SUMMARY') return true;
+  if (tag === 'A' && el.hasAttribute('href')) return true;
+  var ce = el.getAttribute('contenteditable');
+  if (ce !== null && ce.toLowerCase() !== 'false') return true;
+  var ti = el.getAttribute('tabindex');
+  return ti !== null && Number(ti) >= 0;
+};
 // Frozen so page script can neither replace the helpers to suppress or fake
 // label activation, nor delete them and make later clicks throw.
 for (const _name of ['__telemaco_activateLabel', '__telemaco_isDisabled',
-                     '__telemaco_labeledControl', '__telemaco_interactiveHost']) {
+                     '__telemaco_labeledControl', '__telemaco_interactiveHost',
+                     '__telemaco_isFocusable']) {
   Object.defineProperty(globalThis, _name, { writable: false, configurable: false });
 }
 
@@ -3700,8 +3718,28 @@ class Element extends Node {
       }
     }
   }
-  focus() { globalThis.__telemaco_focused = this; globalThis.__telemaco_click_target = this; }
-  blur() { if (globalThis.__telemaco_focused === this) globalThis.__telemaco_focused = null; }
+  // Real-browser focus behavior: moving focus fires blur then focusout on the
+  // element losing it, and focus then focusin on the element gaining it (the
+  // order browsers implement; the UI Events spec orders them differently, but
+  // pages are written against Chrome). Refocusing the active element is a
+  // no-op, and the events are the default action of the API, so they arrive
+  // trusted — CDP clients and the GUI rely on focus() moving activeElement
+  // before Input.dispatchKeyEvent targets it.
+  focus() {
+    var prev = globalThis.__telemaco_focused;
+    if (prev === this) return;
+    if (prev && typeof prev.blur === 'function') prev.blur();
+    globalThis.__telemaco_focused = this;
+    globalThis.__telemaco_click_target = this;
+    this.dispatchEvent(globalThis.__telemaco_markTrusted(new FocusEvent('focus')));
+    this.dispatchEvent(globalThis.__telemaco_markTrusted(new FocusEvent('focusin', { bubbles: true })));
+  }
+  blur() {
+    if (globalThis.__telemaco_focused !== this) return;
+    globalThis.__telemaco_focused = null;
+    this.dispatchEvent(globalThis.__telemaco_markTrusted(new FocusEvent('blur')));
+    this.dispatchEvent(globalThis.__telemaco_markTrusted(new FocusEvent('focusout', { bubbles: true })));
+  }
 
   // --- Popover API (HTML "popover") ---------------------------------------
   // Read the popover content attribute case-insensitively. The HTML parser
