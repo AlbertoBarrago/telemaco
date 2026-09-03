@@ -5,7 +5,6 @@ edition = "2021"
 description = "Rust API for the Telemaco headless browser"
 readme = "README.md"
 repository = "https://github.com/AlbertoBarrago/telemaco"
-license = "Apache-2.0"
 
 [features]
 default = ["api"]
