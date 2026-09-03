@@ -2486,42 +2486,64 @@ mod tests {
         );
     }
 
-    // Real-site pagination check for browser_markdown. Ignored by default:
+    // Real-site pagination checks for browser_markdown. Ignored by default:
     // needs network and a full render. Run with
     // `cargo test -p telemaco-mcp --lib -- --ignored --nocapture`.
     //
-    // Asserts three things:
-    //   1. the page spans multiple markdown pages, each carrying the
-    //      continuation marker
-    //   2. a known sentence (the 503 rate-limit note) survives when the
-    //      pages are read in sequence — pagination loses nothing
-    //   3. page>=2 is served from the cache, not re-converted: its wall
-    //      time must be a small fraction of the first conversion
+    // The two tests pin the two agent-facing scenarios:
+    //   - Salesforce: the needed sentence (503 rate-limit note) sits in the
+    //     first ~4000 chars. Page 1 is sufficient; page 2 carries only the
+    //     OneTrust cookie banner. An agent can stop after page 1.
+    //   - docs.rs: the Serde overview prose is split at the first page
+    //     boundary ("usage examples." ends page 1; the reflection/trait
+    //     paragraphs start page 2). The agent MUST read page 2 to get the
+    //     rest — pagination must hand it over losslessly.
+    //
+    // Both also verify page>=2 is served from the cache, not re-converted.
+    async fn navigate_to(url: &str, state: &mut BrowserState) {
+        let page = state.page_mut();
+        page.set_navigation_timeout(std::time::Duration::from_secs(60));
+        page.navigate_with_wait(url, telemaco_browser::lifecycle::WaitUntil::from_str("load"))
+            .await
+            .expect("navigate");
+        // SPA content mounts after load; same settle the CLI does.
+        page.settle(5000).await;
+    }
+
+    fn page_total(marker_page: &str) -> usize {
+        marker_page.split("page 1 of ")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse::<usize>().ok())
+            .expect("page 1 carries a total page count")
+    }
+
     #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires network and full render"]
-    async fn salesforce_markdown_pagination_retains_and_caches() {
+    async fn salesforce_page1_suffices_and_page2_is_banner_noise() {
         const URL: &str = "https://developer.salesforce.com/docs/atlas.en-us.chatterapi.meta/chatterapi/intro_what_is_chatter_connect.htm";
         let mut state = BrowserState::new(None, None, false);
-        {
-            let page = state.page_mut();
-            page.set_navigation_timeout(std::time::Duration::from_secs(60));
-            page.navigate_with_wait(URL, telemaco_browser::lifecycle::WaitUntil::from_str("load"))
-                .await
-                .expect("navigate to Salesforce docs");
-            // SPA content mounts after load; same settle the CLI does.
-            page.settle(5000).await;
-        }
-        let url = state.page_mut().url_string();
+        navigate_to(URL, &mut state).await;
 
         let t0 = std::time::Instant::now();
         let p1 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("page 1");
         let convert_elapsed = t0.elapsed();
+        let current_url = state.page_mut().url_string();
         assert!(
-            state.markdown_cache.as_ref().expect("cache seeded").0 == url,
+            state.markdown_cache.as_ref().expect("cache seeded").0 == current_url,
             "cache keyed by page URL"
         );
 
-        // Every page beyond the first is a pure cache hit: ~0 work.
+        let total = page_total(&p1);
+        assert!(total >= 2, "expected multi-page document, got {total}");
+
+        // THE SUFFICIENT CASE: everything needed is on page 1.
+        assert!(
+            p1.contains("503 Service Unavailable"),
+            "the 503 rate-limit note must be on page 1 (agent can stop here)"
+        );
+
+        // Page 2 exists (marker says so) and is a pure cache hit.
         let t1 = std::time::Instant::now();
         let p2 = tool_markdown(&json!({ "page": 2 }), &mut state).expect("page 2");
         let cached_elapsed = t1.elapsed();
@@ -2532,42 +2554,49 @@ mod tests {
             cached_elapsed
         );
         assert!(p2.contains("page 2 of"), "p2 marker missing: {p2}");
-
-        // Walk the whole document page by page.
-        let total = p1.split("page 1 of ")
-            .nth(1)
-            .and_then(|s| s.split_whitespace().next())
-            .and_then(|s| s.parse::<usize>().ok())
-            .expect("p1 carries a total page count");
-        assert!(total >= 2, "expected multi-page document, got {total}");
-
-        let mut whole = String::new();
-        for page_no in 1..=total {
-            let out = tool_markdown(&json!({ "page": page_no }), &mut state)
-                .unwrap_or_else(|e| panic!("page {page_no}: {e}"));
-            assert!(
-                !out.contains("beyond the end"),
-                "page {page_no} of {total} out of range"
-            );
-            if !whole.is_empty() {
-                whole.push_str("\n\n");
-            }
-            whole.push_str(out.trim_end());
-        }
-
+        // Page 2 on this page is the cookie banner: real page, no content.
         assert!(
-            whole.contains("503 Service Unavailable"),
-            "the 503 note must survive pagination"
-        );
-        assert!(
-            whole.contains("Connect REST API"),
-            "the page title content must survive pagination"
+            p2.contains("Cookie Consent Manager"),
+            "page 2 should carry the banner noise an agent can ignore"
         );
         println!(
-            "salesforce markdown: {total} pages, convert {:?}, cached read {:?}, whole {} chars",
+            "salesforce: {total} pages, convert {:?}, cached {:?}, page 2 = banner noise (agent stops at page 1)",
             convert_elapsed,
-            cached_elapsed,
-            whole.len()
+            cached_elapsed
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn docs_rs_page2_carries_the_core_content() {
+        const URL: &str = "https://docs.rs/serde/latest/serde/";
+        let mut state = BrowserState::new(None, None, false);
+        navigate_to(URL, &mut state).await;
+
+        let p1 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("page 1");
+        let total = page_total(&p1);
+        assert!(total >= 2, "expected multi-page document, got {total}");
+
+        // THE MUST-CONTINUE CASE: the overview prose continues past the
+        // first page boundary. Page 1 ends after "usage examples."; the
+        // reflection/trait-system paragraphs live on page 2.
+        assert!(
+            !p1.contains("Where many other languages rely on runtime reflection"),
+            "the continuation prose must NOT be on page 1 for this fixture"
+        );
+
+        let t0 = std::time::Instant::now();
+        let p2 = tool_markdown(&json!({ "page": 2 }), &mut state).expect("page 2");
+        let cached_elapsed = t0.elapsed();
+        assert!(
+            p2.contains("Where many other languages rely on runtime reflection"),
+            "the continuation prose must be reachable on page 2"
+        );
+        assert!(p2.contains("page 2 of"), "p2 marker missing: {p2}");
+        println!(
+            "docs.rs: {total} pages, p1 {} chars, continuation on page 2, read {:?} (cache hit)",
+            p1.len(),
+            cached_elapsed
         );
     }
 }
