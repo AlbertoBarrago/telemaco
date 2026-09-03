@@ -40,6 +40,10 @@ impl TestPageServer {
             while !thread_stop.load(Ordering::Acquire) {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Accepted sockets inherit O_NONBLOCK from the listener
+                        // on macOS/BSD: force a blocking stream so the request
+                        // bytes are read before responding.
+                        let _ = stream.set_nonblocking(false);
                         let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
                         let mut request = [0u8; 2048];
                         let _ = stream.read(&mut request);
@@ -291,7 +295,8 @@ fn test_navigate_and_snapshot() {
 fn test_evaluate() {
     let server = TestPageServer::spawn();
     let mut c = McpClient::spawn();
-    c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    let nav = c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    assert!(nav["result"]["isError"].is_null(), "navigate failed: {nav}");
 
     let resp = c.tool(
         "browser_evaluate",
@@ -305,7 +310,8 @@ fn test_evaluate() {
 fn test_evaluate_math() {
     let server = TestPageServer::spawn();
     let mut c = McpClient::spawn();
-    c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    let nav = c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    assert!(nav["result"]["isError"].is_null(), "navigate failed: {nav}");
 
     let resp = c.tool(
         "browser_evaluate",
@@ -354,7 +360,8 @@ fn test_wait_drives_timer_and_queued_navigation() {
 fn test_wait_for_selector() {
     let server = TestPageServer::spawn();
     let mut c = McpClient::spawn();
-    c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    let nav = c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    assert!(nav["result"]["isError"].is_null(), "navigate failed: {nav}");
 
     let resp = c.tool(
         "browser_wait_for",
@@ -368,7 +375,8 @@ fn test_wait_for_selector() {
 fn test_wait_for_timeout() {
     let server = TestPageServer::spawn();
     let mut c = McpClient::spawn();
-    c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    let nav = c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    assert!(nav["result"]["isError"].is_null(), "navigate failed: {nav}");
 
     let resp = c.tool(
         "browser_wait_for",
@@ -396,7 +404,8 @@ fn test_unknown_tool_returns_error() {
 fn test_network_requests() {
     let server = TestPageServer::spawn();
     let mut c = McpClient::spawn();
-    c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    let nav = c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    assert!(nav["result"]["isError"].is_null(), "navigate failed: {nav}");
 
     let resp = c.tool("browser_network_requests", serde_json::json!({}));
     let text = content_text(&resp);
@@ -410,7 +419,8 @@ fn test_network_requests() {
 fn test_close_resets_state() {
     let server = TestPageServer::spawn();
     let mut c = McpClient::spawn();
-    c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    let nav = c.tool("browser_navigate", serde_json::json!({"url": server.url()}));
+    assert!(nav["result"]["isError"].is_null(), "navigate failed: {nav}");
     let close = c.tool("browser_close", serde_json::json!({}));
     assert!(close["result"]["isError"].is_null());
 

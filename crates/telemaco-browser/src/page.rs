@@ -6459,6 +6459,10 @@ mod tests {
             while std::time::Instant::now() < deadline {
                 match listener.accept() {
                     Ok((mut stream, _)) => {
+                        // Accepted sockets inherit O_NONBLOCK from the listener
+                        // on macOS/BSD: force a blocking stream so the request
+                        // bytes are read before responding.
+                        let _ = stream.set_nonblocking(false);
                         let mut request = [0u8; 2048];
                         let read = stream.read(&mut request).unwrap_or(0);
                         let first = String::from_utf8_lossy(&request[..read])
