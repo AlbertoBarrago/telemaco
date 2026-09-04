@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Telemaco — Control the web with precision</title>
+<meta name="description" content="A headless browser engine in Rust, built for web scraping and AI agents. Real JavaScript, real DOM, native layout and paint. No Chromium required." />
+<style>
+  :root {
+    --bg: #0A0F1A;
+    --bg-soft: #0E1524;
+    --bg-card: #111A2C;
+    --line: rgba(255,255,255,0.08);
+    --line-strong: rgba(255,255,255,0.14);
+    --text: #F2F5F7;
+    --text-dim: #9AA7B8;
+    --text-faint: #6B7A8F;
+    --accent-1: #45B1F8;
+    --accent-2: #34D399;
+    --grad: linear-gradient(135deg, #45B1F8 0%, #34D399 100%);
+    --radius: 16px;
+    --mono: "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  ::selection { background: rgba(69,177,248,0.3); }
+
+  /* background grid + glow */
+  .bg-grid {
+    position: fixed; inset: 0; z-index: -2;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+  }
+  .glow {
+    position: fixed; z-index: -1; border-radius: 50%; filter: blur(120px); opacity: 0.5;
+  }
+  .glow-1 { top: -200px; left: 10%; width: 600px; height: 400px; background: rgba(69,177,248,0.35); }
+  .glow-2 { top: 30%; right: -150px; width: 500px; height: 500px; background: rgba(52,211,153,0.22); }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    backdrop-filter: blur(12px);
+    background: rgba(10,15,26,0.7);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; letter-spacing: -0.01em; text-decoration: none; }
+  .brand svg { width: 26px; height: 26px; }
+  .brand .brand-name {
+    background: linear-gradient(135deg, #F2F5F7 0%, #9AA7B8 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    transition: background .2s;
+  }
+  .brand:hover .brand-name {
+    background: var(--grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .nav-links { display: flex; gap: 28px; align-items: center; }
+  .nav-links a { color: var(--text-dim); text-decoration: none; font-size: 14px; transition: color .15s; }
+  .nav-links a:hover { color: var(--text); }
+  .nav-gh {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 9px;
+    color: var(--text-dim); border: 1px solid var(--line-strong);
+    background: rgba(255,255,255,0.03); transition: all .15s;
+  }
+  .nav-gh:hover { color: var(--text); background: rgba(255,255,255,0.08); border-color: var(--line-strong); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    text-decoration: none; transition: transform .12s, box-shadow .12s, background .15s;
+    border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+  }
+  .btn-primary { background: var(--grad); color: #04121a; box-shadow: 0 4px 20px rgba(69,177,248,0.25); }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 30px rgba(69,177,248,0.35); }
+  .btn-ghost { border-color: var(--line-strong); color: var(--text); background: rgba(255,255,255,0.02); }
+  .btn-ghost:hover { background: rgba(255,255,255,0.06); }
+
+  /* hero */
+  .hero { padding: 96px 0 72px; text-align: center; position: relative; }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 999px; font-size: 13px;
+    border: 1px solid var(--line-strong); color: var(--text-dim); background: rgba(255,255,255,0.03);
+    margin-bottom: 28px;
+  }
+  .hero-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 10px var(--accent-2); }
+  .hero h1 {
+    font-size: clamp(40px, 7vw, 72px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05;
+    margin-bottom: 20px;
+  }
+  .hero h1 .grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lead {
+    font-size: clamp(17px, 2.4vw, 21px); color: var(--text-dim); max-width: 640px; margin: 0 auto 36px;
+  }
+  .hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 56px; }
+  .hero-code {
+    max-width: 720px; margin: 0 auto; text-align: left;
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .code-head {
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+    border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.02);
+  }
+  .code-head .c { width: 11px; height: 11px; border-radius: 50%; }
+  .code-head .c1 { background: #FF5F57; } .code-head .c2 { background: #FEBC2E; } .code-head .c3 { background: #28C840; }
+  .code-head span { margin-left: 8px; font-size: 12px; color: var(--text-faint); font-family: var(--mono); }
+  .code-body { padding: 20px 22px; font-family: var(--mono); font-size: 13.5px; line-height: 1.7; overflow-x: auto; }
+  .code-body .cmt { color: var(--text-faint); }
+  .code-body .cmd { color: var(--accent-1); }
+  .code-body .out { color: var(--accent-2); }
+  .code-body .dim { color: var(--text-dim); }
+
+  /* metrics */
+  .metrics { padding: 24px 0 72px; }
+  .metrics-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;
+  }
+  .metric {
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; text-align: center; transition: border-color .2s, transform .2s;
+  }
+  .metric:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+  .metric .num { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .metric .lbl { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+  .metric .sub { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+
+  /* sections */
+  section { padding: 72px 0; }
+  .sec-head { text-align: center; max-width: 640px; margin: 0 auto 48px; }
+  .sec-head .kicker { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-1); margin-bottom: 12px; }
+  .sec-head h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 14px; }
+  .sec-head p { color: var(--text-dim); font-size: 16px; }
+
+  /* features */
+  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .feature {
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 26px; transition: border-color .2s, transform .2s;
+  }
+  .feature:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+  .feature .ico {
+    width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    background: rgba(69,177,248,0.12); border: 1px solid rgba(69,177,248,0.2); margin-bottom: 16px;
+  }
+  .feature .ico svg { width: 22px; height: 22px; stroke: var(--accent-1); }
+  .feature h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .feature p { font-size: 14px; color: var(--text-dim); }
+
+  /* comparison table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-card); }
+  table { width: 100%; border-collapse: collapse; min-width: 560px; }
+  th, td { padding: 16px 20px; text-align: left; font-size: 14px; }
+  thead th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-faint); border-bottom: 1px solid var(--line); }
+  tbody tr { border-bottom: 1px solid var(--line); }
+  tbody tr:last-child { border-bottom: none; }
+  td.metric-name { color: var(--text-dim); }
+  td .win { color: var(--accent-2); font-weight: 600; }
+  td .lose { color: var(--text-faint); }
+  .col-telemaco { font-weight: 600; }
+  .col-telemaco .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(52,211,153,0.12); color: var(--accent-2); margin-left: 8px; vertical-align: middle; }
+
+  /* code tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--line); color: var(--text-dim); background: transparent; transition: all .15s;
+  }
+  .tab.active { background: var(--grad); color: #04121a; border-color: transparent; }
+  .tab:not(.active):hover { color: var(--text); border-color: var(--line-strong); }
+  .code-block { display: none; }
+  .code-block.active { display: block; }
+
+  /* install */
+  .install-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+  .install-card { background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; }
+  .install-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+  .install-card h3 .n { width: 24px; height: 24px; border-radius: 7px; background: rgba(69,177,248,0.12); color: var(--accent-1); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+  .install-card pre { background: #0A0F1A; border: 1px solid var(--line); border-radius: 10px; padding: 16px; font-family: var(--mono); font-size: 12.5px; overflow-x: auto; line-height: 1.6; }
+  .install-card pre .cmd { color: var(--accent-1); }
+  .install-card pre .cmt { color: var(--text-faint); }
+
+  /* CTA band */
+  .cta-band {
+    background: var(--grad); border-radius: 20px; padding: 56px 40px; text-align: center; color: #04121a;
+    position: relative; overflow: hidden;
+  }
+  .cta-band h2 { font-size: clamp(26px, 4vw, 38px); font-weight: 700; letter-spacing: -0.02em; margin-bottom: 12px; }
+  .cta-band p { font-size: 16px; opacity: 0.85; margin-bottom: 28px; }
+  .cta-band .btn { background: #04121a; color: #fff; }
+  .cta-band .btn:hover { transform: translateY(-1px); }
+
+  footer { padding: 48px 0 64px; border-top: 1px solid var(--line); margin-top: 48px; }
+  .foot-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+  .foot-inner .brand { font-size: 15px; }
+  .foot-links { display: flex; gap: 20px; }
+  .foot-links a { color: var(--text-faint); text-decoration: none; font-size: 13px; }
+  .foot-links a:hover { color: var(--text); }
+  .foot-note { width: 100%; text-align: center; color: var(--text-faint); font-size: 12px; margin-top: 20px; }
+
+  @media (max-width: 720px) {
+    .nav-links a:not(.btn) { display: none; }
+    .hero { padding: 64px 0 48px; }
+    section { padding: 56px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="glow glow-1"></div>
+<div class="glow glow-2"></div>
+
+<nav>
+  <div class="wrap nav-inner">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#45B1F8"/><stop offset="1" stop-color="#34D399"/></linearGradient></defs>
+        <rect width="1024" height="1024" rx="224" fill="url(#lg)"/>
+        <g stroke="#FFFFFF" stroke-width="48" stroke-linecap="round">
+          <line x1="504" y1="600" x2="392" y2="832"/><line x1="520" y1="600" x2="632" y2="832"/>
+        </g>
+        <path d="M784,136 L808,208 L880,232 L808,256 L784,328 L760,256 L688,232 L760,208 Z" fill="#FFFFFF"/>
+        <g transform="rotate(-38 512 512)">
+          <rect x="120" y="456" width="80" height="120" rx="32" fill="#FFFFFF"/>
+          <rect x="176" y="432" width="608" height="168" rx="84" fill="#FFFFFF"/>
+          <rect x="744" y="400" width="96" height="232" rx="40" fill="#FFFFFF"/>
+        </g>
+      </svg>
+      <span class="brand-name">Telemaco</span>
+    </a>
+    <div class="nav-links">
+      <a href="#why">Why</a>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="#mcp">MCP</a>
+      <a class="nav-gh" href="https://github.com/AlbertoBarrago/telemaco" target="_blank" rel="noopener" aria-label="GitHub">
+        <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-badge"><span class="dot"></span> Headless browser engine · Rust · No Chromium</div>
+    <h1>Control the web<br />with <span class="grad">precision.</span></h1>
+    <p class="lead">A headless browser engine in Rust, built for web scraping and AI agents. Real JavaScript, real DOM, native layout and paint — in a 70&nbsp;MB binary that starts instantly.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="#install">Get started</a>
+      <a class="btn btn-ghost" href="#quickstart">See it in action</a>
+    </div>
+    <div class="hero-code">
+      <div class="code-head">
+        <span class="c c1"></span><span class="c c2"></span><span class="c c3"></span>
+        <span>telemaco</span>
+      </div>
+      <div class="code-body">
+        <span class="cmt"># Fetch a page, run real JavaScript, dump the result</span><br />
+        <span class="cmd">$</span> telemaco fetch https://news.ycombinator.com --eval "document.title"<br />
+        <span class="out">Hacker News</span><br /><br />
+        <span class="cmt"># Drive it like headless Chrome, from Puppeteer or Playwright</span><br />
+        <span class="cmd">$</span> telemaco serve --port 9222<br />
+        <span class="dim">→ CDP server listening on ws://127.0.0.1:9222</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="metrics">
+  <div class="wrap">
+    <div class="metrics-grid">
+      <div class="metric"><div class="num">12×</div><div class="lbl">Faster page loads</div><div class="sub">vs headless Chrome</div></div>
+      <div class="metric"><div class="num">6×</div><div class="lbl">Less memory</div><div class="sub">~30 MB vs 200+ MB</div></div>
+      <div class="metric"><div class="num">85 ms</div><div class="lbl">Page load</div><div class="sub">on framework pages</div></div>
+      <div class="metric"><div class="num">70 MB</div><div class="lbl">Binary size</div><div class="sub">vs 300+ MB Chrome</div></div>
+      <div class="metric"><div class="num">0</div><div class="lbl">Chromium required</div><div class="sub">native layout &amp; paint</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="why">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Why Telemaco</div>
+      <h2>Headless Chrome, without the Chrome</h2>
+      <p>Same CDP automation surface. A fraction of the resources. Built-in anti-detection.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Metric</th><th class="col-telemaco">Telemaco <span class="tag">yours</span></th><th>Headless Chrome</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="metric-name">Memory</td><td class="col-telemaco win">30 MB</td><td class="lose">200+ MB</td></tr>
+          <tr><td class="metric-name">Binary size</td><td class="col-telemaco win">70 MB</td><td class="lose">300+ MB</td></tr>
+          <tr><td class="metric-name">Page load</td><td class="col-telemaco win">85 ms</td><td class="lose">~500 ms</td></tr>
+          <tr><td class="metric-name">Startup</td><td class="col-telemaco win">Instant</td><td class="lose">~2 s</td></tr>
+          <tr><td class="metric-name">Anti-detect</td><td class="col-telemaco win">Built-in</td><td class="lose">None</td></tr>
+          <tr><td class="metric-name">Puppeteer / Playwright</td><td class="col-telemaco win">Yes</td><td class="lose">Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Features</div>
+      <h2>Everything you need to automate the web</h2>
+      <p>Rendering and stealth are first-class capabilities, not afterthoughts.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg></div>
+        <h3>Native rendering</h3>
+        <p>CSS layout and paint, viewport and full-page screenshots, activity-driven CDP screencasting, and PDF export. No Chromium, no WebView.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+        <h3>Stealth mode</h3>
+        <p>wreq/BoringSSL transport, per-session fingerprint randomization, consistent browser identity, and a tracker blocklist. Rendering stays fully available.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+        <h3>CDP compatible</h3>
+        <p><code>telemaco serve</code> speaks the Chrome DevTools Protocol, so Puppeteer, Playwright, and chromiumoxide connect out of the box.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>MCP server</h3>
+        <p>Stateful browser automation tools for Claude Desktop, Cursor, and any MCP client — over stdio or HTTP.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>Hardened by default</h3>
+        <p>SSRF guards on loopback, RFC1918, and link-local targets; a V8 termination watchdog per page; process-level hard deadlines. One bad page can never hang a worker.</p>
+      </div>
+      <div class="feature">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg></div>
+        <h3>Parallel scraping</h3>
+        <p><code>telemaco scrape</code> fans out across workers with configurable concurrency, proxy inheritance, and JSON output for pipelines.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Install</div>
+      <h2>Up and running in seconds</h2>
+      <p>Prebuilt binaries, Docker, or build from source.</p>
+    </div>
+    <div class="install-grid">
+      <div class="install-card">
+        <h3><span class="n">1</span> Prebuilt binary</h3>
+        <pre><span class="cmt"># Linux x86_64</span>
+<span class="cmd">$</span> curl -LO https://github.com/AlbertoBarrago/telemaco/releases/latest/download/telemaco-x86_64-linux.tar.gz
+<span class="cmd">$</span> tar xzf telemaco-x86_64-linux.tar.gz
+<span class="cmd">$</span> ./telemaco fetch https://example.com --eval "document.title"</pre>
+      </div>
+      <div class="install-card">
+        <h3><span class="n">2</span> Docker</h3>
+        <pre><span class="cmd">$</span> docker build -t telemaco .
+<span class="cmd">$</span> docker run -d --name telemaco \
+    -p 127.0.0.1:9222:9222 telemaco</pre>
+      </div>
+      <div class="install-card">
+        <h3><span class="n">3</span> From source</h3>
+        <pre><span class="cmd">$</span> git clone https://github.com/AlbertoBarrago/telemaco.git
+<span class="cmd">$</span> cd telemaco
+<span class="cmd">$</span> cargo build --release -p telemaco-cli --bins --features render</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Quick start</div>
+      <h2>Drive it like headless Chrome</h2>
+      <p>Same CDP surface your existing Puppeteer and Playwright code already uses.</p>
+    </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="puppeteer">Puppeteer</button>
+      <button class="tab" data-tab="playwright">Playwright</button>
+      <button class="tab" data-tab="cli">CLI</button>
+    </div>
+    <div class="hero-code">
+      <div class="code-head"><span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span id="tab-label">puppeteer.js</span></div>
+      <div class="code-body" id="tab-puppeteer">
+        <span class="cmt">// Start the CDP server</span><br />
+        <span class="cmd">$</span> telemaco serve --port 9222<br /><br />
+        <span class="cmt">// puppeteer.js</span><br />
+        <span class="dim">import</span> puppeteer <span class="dim">from</span> <span class="out">'puppeteer-core'</span>;<br /><br />
+        <span class="dim">const</span> browser = <span class="dim">await</span> puppeteer.connect({<br />
+        &nbsp;&nbsp;browserWSEndpoint: <span class="out">'ws://127.0.0.1:9222/devtools/browser'</span>,<br />
+        });<br />
+        <span class="dim">const</span> page = <span class="dim">await</span> browser.newPage();<br />
+        <span class="dim">await</span> page.goto(<span class="out">'https://news.ycombinator.com'</span>);<br /><br />
+        <span class="dim">const</span> stories = <span class="dim">await</span> page.evaluate(<span class="dim">()</span> =&gt;<br />
+        &nbsp;&nbsp;Array.from(document.querySelectorAll(<span class="out">'.titleline &gt; a'</span>))<br />
+        &nbsp;&nbsp;&nbsp;&nbsp;.map(a =&gt; ({ title: a.textContent, url: a.href }))<br />
+        );<br />
+        console.log(stories);
+      </div>
+      <div class="code-body" id="tab-playwright">
+        <span class="cmt">// Start the CDP server</span><br />
+        <span class="cmd">$</span> telemaco serve --port 9222<br /><br />
+        <span class="cmt">// playwright.js</span><br />
+        <span class="dim">import</span> { chromium } <span class="dim">from</span> <span class="out">'playwright-core'</span>;<br /><br />
+        <span class="dim">const</span> browser = <span class="dim">await</span> chromium.connectOverCDP({<br />
+        &nbsp;&nbsp;endpointURL: <span class="out">'ws://127.0.0.1:9222'</span>,<br />
+        });<br />
+        <span class="dim">const</span> page = <span class="dim">await</span> browser.newContext().then(ctx =&gt; ctx.newPage());<br />
+        <span class="dim">await</span> page.goto(<span class="out">'https://en.wikipedia.org/wiki/Web_scraping'</span>);<br />
+        console.log(<span class="dim">await</span> page.title());
+      </div>
+      <div class="code-body" id="tab-cli">
+        <span class="cmt"># Page title</span><br />
+        <span class="cmd">$</span> telemaco fetch https://example.com --eval "document.title"<br /><br />
+        <span class="cmt"># Extract all links</span><br />
+        <span class="cmd">$</span> telemaco fetch https://example.com --dump links<br /><br />
+        <span class="cmt"># Render JS and dump HTML</span><br />
+        <span class="cmd">$</span> telemaco fetch https://news.ycombinator.com --dump html<br /><br />
+        <span class="cmt"># Screenshot the settled page</span><br />
+        <span class="cmd">$</span> telemaco fetch https://example.com --screenshot page.png<br /><br />
+        <span class="cmt"># Scrape many URLs in parallel</span><br />
+        <span class="cmd">$</span> telemaco scrape url1 url2 url3 --concurrency 25 --format json
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="mcp">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">MCP</div>
+      <h2>Give your AI agents a browser</h2>
+      <p>Telemaco ships an MCP server that exposes browser automation to Claude Desktop, Cursor, and any MCP client.</p>
+    </div>
+    <div class="hero-code">
+      <div class="code-head"><span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span>claude_desktop_config.json</span></div>
+      <div class="code-body">
+        <span class="dim">{</span><br />
+        &nbsp;&nbsp;<span class="out">"mcpServers"</span>: {<br />
+        &nbsp;&nbsp;&nbsp;&nbsp;<span class="out">"telemaco"</span>: { <span class="out">"command"</span>: <span class="out">"telemaco"</span>, <span class="out">"args"</span>: [<span class="out">"mcp"</span>] }<br />
+        &nbsp;&nbsp;}<br />
+        <span class="dim">}</span><br /><br />
+        <span class="cmt"># Or over HTTP</span><br />
+        <span class="cmd">$</span> telemaco mcp --http --port 8080<br />
+        <span class="dim">→ endpoint: http://127.0.0.1:8080/mcp</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="cta-band">
+      <h2>Ready to control the web?</h2>
+      <p>Open source under the Apache 2.0 license. Clone it, build it, drive it.</p>
+      <a class="btn" href="https://github.com/AlbertoBarrago/telemaco" target="_blank" rel="noopener">View on GitHub ↗</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-inner">
+    <div class="brand">
+      <svg viewBox="0 0 1024 1024" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="lgf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#45B1F8"/><stop offset="1" stop-color="#34D399"/></linearGradient></defs>
+        <rect width="1024" height="1024" rx="224" fill="url(#lgf)"/>
+        <g stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"><line x1="504" y1="600" x2="392" y2="832"/><line x1="520" y1="600" x2="632" y2="832"/></g>
+        <path d="M784,136 L808,208 L880,232 L808,256 L784,328 L760,256 L688,232 L760,208 Z" fill="#FFFFFF"/>
+        <g transform="rotate(-38 512 512)"><rect x="120" y="456" width="80" height="120" rx="32" fill="#FFFFFF"/><rect x="176" y="432" width="608" height="168" rx="84" fill="#FFFFFF"/><rect x="744" y="400" width="96" height="232" rx="40" fill="#FFFFFF"/></g>
+      </svg>
+      Telemaco
+    </div>
+    <div class="foot-links">
+      <a href="https://github.com/AlbertoBarrago/telemaco" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/AlbertoBarrago/telemaco/releases" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/AlbertoBarrago/telemaco/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    </div>
+    <div class="foot-note">Telemaco · Apache License 2.0 · Built in Rust</div>
+  </div>
+</footer>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.code-block').forEach(b => b.classList.remove('active'));
+      tab.classList.add('active');
+      const id = tab.dataset.tab;
+      document.getElementById('tab-' + id).classList.add('active');
+      document.getElementById('tab-label').textContent = id + '.js';
+    });
+  });
+</script>
+</body>
+</html>
