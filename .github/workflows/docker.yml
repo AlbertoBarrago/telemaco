@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual publish, so the image can be rebuilt without inventing a tag.
+  # Dispatch against a tag ref to republish that release; against a branch it
+  # takes the version from the manifest and does not touch `latest`.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -48,10 +52,25 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version from tag
+      - name: Resolve the version to publish
         if: steps.creds.outputs.configured == 'true'
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          set -euo pipefail
+          # On a tag the tag is the version. On a manual run from a branch there
+          # is no tag to strip, and the untouched ref would become the image tag
+          # (`refs/heads/main`), so the manifest decides and `latest` is left
+          # pointing at the last real release.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+            release=true
+          else
+            version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+            release=false
+            echo "::notice::Not a tag ref; publishing $version without moving latest."
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         if: steps.creds.outputs.configured == 'true'
@@ -63,7 +82,7 @@ jobs:
             TELEMACO_VERSION=${{ steps.version.outputs.version }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/telemaco:${{ steps.version.outputs.version }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/telemaco:latest
+            ${{ steps.version.outputs.release == 'true' && format('{0}/telemaco:latest', secrets.DOCKERHUB_USERNAME) || '' }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
