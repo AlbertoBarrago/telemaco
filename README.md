@@ -112,7 +112,7 @@ docker pull albz222/telemaco:latest
 docker run -d --name telemaco -p 127.0.0.1:9222:9222 albz222/telemaco:latest
 ```
 
-Images are tagged by version (`albz222/telemaco:0.1.1`) as well as `latest`,
+Images are tagged by version (`albz222/telemaco:0.1.2`) as well as `latest`,
 and built for `linux/amd64` and `linux/arm64`. The container runs the CDP
 server on port 9222 by default, so Puppeteer and Playwright can connect to
 `ws://127.0.0.1:9222` straight away.

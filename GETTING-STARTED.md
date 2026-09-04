@@ -281,7 +281,7 @@ Claude Desktop configuration:
 }
 ```
 
-Tools available, 37 as of 0.1.1: `browser_navigate`, `browser_snapshot`,
+Tools available, 37 as of 0.1.2: `browser_navigate`, `browser_snapshot`,
 `browser_interactive_elements`, `browser_click`, `browser_fill`,
 `browser_fill_form`, `browser_detect_forms`, `browser_type`,
 `browser_press_key`, `browser_select_option`, `browser_evaluate`,

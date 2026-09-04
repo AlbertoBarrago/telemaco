@@ -3044,7 +3044,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "telemaco"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "serde",
@@ -3058,7 +3058,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-browser"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64",
@@ -3076,7 +3076,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-cdp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64",
@@ -3100,7 +3100,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-cli"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -3121,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-dom"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "cssparser",
  "html5ever",
@@ -3135,7 +3135,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-js"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3167,7 +3167,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-mcp"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64",
@@ -3184,7 +3184,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-net"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "encoding_rs",
@@ -3206,7 +3206,7 @@ dependencies = [
 
 [[package]]
 name = "telemaco-render"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ab_glyph",
  "base64",
