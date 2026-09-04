@@ -334,3 +334,7 @@ residential and ISP proxies, sticky sessions, and per-country targeting
 through the proxy username. Route Telemaco through it with the global
 `--proxy` flag. Discount codes: `TELEMACO35` (35% off mobile and residential),
 `TELEMACO40` (40% off ISP and static).
+
+## License
+
+Telemaco is licensed under the [Apache License, Version 2.0](LICENSE).
