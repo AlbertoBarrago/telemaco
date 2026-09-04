@@ -1,3 +1,4 @@
+mod update;
 mod focus;
 
 use std::sync::Arc;
@@ -200,6 +201,18 @@ enum Command {
 
         #[arg(long, short)]
         quiet: bool,
+    },
+
+    /// Replace the installed binaries with the latest release, keeping the
+    /// build variant this one was compiled with.
+    Update {
+        /// Report whether an update exists and exit; 1 means one is available.
+        #[arg(long)]
+        check: bool,
+
+        /// Reinstall even when already on the latest version.
+        #[arg(long)]
+        force: bool,
     },
 
     Mcp {
@@ -536,6 +549,11 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
         }
+        Some(Command::Update { check, force }) => {
+            update::run(check, force).await?;
+            // The command just reported the versions; a hint would repeat it.
+            return Ok(());
+        }
         Some(Command::Mcp {
             http,
             host,
@@ -565,6 +583,11 @@ async fn main() -> anyhow::Result<()> {
             telemaco_cdp::start_with_options(args.port, args.proxy, stealth).await?;
         }
     }
+
+    // After the work, never before: this can only add time to a run that has
+    // already produced its output, and it stays silent unless a human is
+    // watching. See update::maybe_notify.
+    update::maybe_notify().await;
 
     Ok(())
 }

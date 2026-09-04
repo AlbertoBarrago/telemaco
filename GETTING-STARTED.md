@@ -55,7 +55,30 @@ rewriting it as strict JSON would delete them.
 
 Re-running it changes nothing once telemaco is registered.
 
-### 1.2 Docker
+### 1.2 Updating
+
+```bash
+telemaco update            # replace the binaries with the latest release
+telemaco update --check    # report only; exit 1 means an update is available
+```
+
+The update keeps the build variant you installed, so a stealth install stays a
+stealth install rather than quietly becoming the plain one. Both `telemaco` and
+`telemaco-worker` are replaced together, since a mismatched pair breaks
+`scrape`. The download is verified by running it before anything is replaced,
+and the replacement itself is a rename, so a failure leaves the working install
+untouched.
+
+Run interactively, telemaco checks once a day whether a newer release exists
+and says so. It never does this when stderr is not a terminal, which covers
+scripts, CI, and MCP clients: a browser people reach for to avoid leaving
+traces should not contact GitHub on its own. `TELEMACO_NO_UPDATE_CHECK=1`
+switches the check off entirely.
+
+Self-update is not available on Windows yet; a running `.exe` cannot be
+replaced in place, so the command says so instead of half-finishing.
+
+### 1.3 Docker
 
 ```bash
 docker pull albz222/telemaco:latest
