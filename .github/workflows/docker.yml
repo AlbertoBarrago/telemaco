@@ -13,8 +13,26 @@ permissions:
   contents: read
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  # One job per architecture, each on its own native runner. Building arm64
+  # under QEMU works but compiles V8 emulated, which turned a minutes-long
+  # build into hours. release.yml already builds aarch64 natively; this
+  # matches it.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-22.04
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+      configured: ${{ steps.creds.outputs.configured }}
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
@@ -37,21 +55,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up QEMU
-        if: steps.creds.outputs.configured == 'true'
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
-
-      - name: Set up Docker Buildx
-        if: steps.creds.outputs.configured == 'true'
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - name: Login to Docker Hub
-        if: steps.creds.outputs.configured == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Resolve the version to publish
         if: steps.creds.outputs.configured == 'true'
         id: version
@@ -72,17 +75,81 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Set up Docker Buildx
         if: steps.creds.outputs.configured == 'true'
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to Docker Hub
+        if: steps.creds.outputs.configured == 'true'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Push by digest rather than by tag: the two architecture jobs would
+      # otherwise race, each overwriting the other's tag. The merge job below
+      # assembles them into one multi-arch tag.
+      - name: Build and push by digest
+        if: steps.creds.outputs.configured == 'true'
+        id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
-          push: true
+          platforms: ${{ matrix.platform }}
           build-args: |
             TELEMACO_VERSION=${{ steps.version.outputs.version }}
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/telemaco:${{ steps.version.outputs.version }}
-            ${{ steps.version.outputs.release == 'true' && format('{0}/telemaco:latest', secrets.DOCKERHUB_USERNAME) || '' }}
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          outputs: type=image,name=${{ secrets.DOCKERHUB_USERNAME }}/telemaco,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Export the digest
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${{ steps.build.outputs.digest }}"
+
+      - name: Upload the digest
+        if: steps.creds.outputs.configured == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    if: needs.build.outputs.configured == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download the digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create the multi-arch tag
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/telemaco
+          VERSION: ${{ needs.build.outputs.version }}
+          RELEASE: ${{ needs.build.outputs.release }}
+        run: |
+          set -euo pipefail
+          tags=(--tag "$IMAGE:$VERSION")
+          if [ "$RELEASE" = "true" ]; then
+            tags+=(--tag "$IMAGE:latest")
+          fi
+          docker buildx imagetools create "${tags[@]}" \
+            $(printf "$IMAGE@sha256:%s " *)
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
