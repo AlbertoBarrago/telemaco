@@ -26,6 +26,7 @@
 ## Reference
 
 * [CLI reference](CLI-reference.md)
+* [Configuration file](Configuration-file.md)
 * [Environment variables](Environment-variables.md)
 
 ## Contributing

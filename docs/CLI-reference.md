@@ -11,6 +11,7 @@ Top-level flags apply to every subcommand.
     --user-agent <UA>        Override the User-Agent
     --storage-dir <DIR>      Persistent cookies and localStorage
     --allow-private-network  Permit loopback / RFC1918 / link-local
+    --config <PATH>          TOML config file (must exist if given)
     --v8-flags <FLAGS>       Raw V8 flags, applied at startup
 -h, --help                   Help
 -V, --version                Version
@@ -117,8 +118,11 @@ Run telemaco as an MCP server.
     --user-agent <UA>        Override the User-Agent
     --stealth                Consistent browser fingerprint + tracker blocking (global)
     --allow-private-network  Permit loopback / RFC1918 / link-local
+    --max-chars <N>          Cap on extracted page text (0 = unlimited)
 -v, --verbose                Enable info logging
 ```
+
+`--max-chars` overrides the configured cap for `browser_markdown` and `browser_snapshot`; a `max_chars` argument on an individual tool call still wins over it. Every other extraction cap is set through the config file or the environment: see [Configuration file](Configuration-file.md).
 
 `--host` only applies with `--http`. The default `127.0.0.1` keeps the server loopback-only; set `0.0.0.0` to bind all interfaces (for example a Docker Compose sidecar) and pair it with `TELEMACO_MCP_ALLOWED_ORIGINS`.
 

@@ -1,0 +1,46 @@
+# Telemaco configuration.
+#
+# Copy to `telemaco.toml` in the working directory, or to
+# `~/.config/telemaco/config.toml`, or point at it explicitly:
+#
+#   telemaco --config /path/to/telemaco.toml mcp
+#
+# A path given with --config MUST exist. The two discovered locations are
+# optional: their absence just means built-in defaults. A file that IS found
+# but is malformed, or carries an unknown key, is a hard error at startup
+# rather than a silent fallback, so a typo cannot quietly do nothing.
+
+[mcp.limits]
+# Caps on what each MCP tool returns.
+#
+# These exist because MCP output goes straight into an agent's context window:
+# an uncapped dump of a large page can burn a whole window in one call. Treat
+# them as a context budget rather than a restriction to be removed on reflex.
+#
+# Every value is a plain integer, and 0 means unlimited.
+#
+# Precedence, lowest to highest:
+#   default  <  this file  <  environment variable  <  CLI flag  <  tool argument
+
+# Characters of page text from browser_markdown and browser_snapshot.
+# Raise this when you want whole articles rather than the opening section.
+max_chars = 4000
+
+# Anchors returned by browser_links.
+max_links = 100
+
+# Elements returned by browser_interactive_elements.
+max_interactive = 100
+
+# Matches returned by browser_search, and the characters of context kept
+# around each one.
+max_search_results = 10
+search_context_chars = 80
+
+# Entries returned by browser_network_requests and browser_console_messages.
+# A busy single-page app can produce thousands of both.
+max_network_requests = 500
+max_console_messages = 500
+
+# Forms returned by browser_detect_forms.
+max_forms = 100

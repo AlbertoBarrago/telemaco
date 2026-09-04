@@ -122,6 +122,36 @@ Comma-separated `Origin` allowlist for the HTTP MCP transport (`telemaco mcp --h
 TELEMACO_MCP_ALLOWED_ORIGINS="https://app.example.com" telemaco mcp --http --host 0.0.0.0
 ```
 
+### MCP extraction limits
+
+Every cap an MCP tool applies to its own output can be raised or removed. They exist because MCP output lands directly in an agent's context window, so an uncapped dump of a large page can burn a whole window in a single call: they are a context budget, not an arbitrary restriction.
+
+All of them take a plain integer, and `0` means unlimited. An unparsable value is ignored and the layer below it stands, so a typo in a shell export cannot silently clamp output to nothing.
+
+| Variable | Controls | Default |
+|---|---|---|
+| `TELEMACO_MCP_MAX_CHARS` | characters of page text from `browser_markdown` and `browser_snapshot` | 4000 |
+| `TELEMACO_MCP_MAX_LINKS` | anchors from `browser_links` | 100 |
+| `TELEMACO_MCP_MAX_INTERACTIVE` | elements from `browser_interactive_elements` | 100 |
+| `TELEMACO_MCP_MAX_SEARCH_RESULTS` | matches from `browser_search` | 10 |
+| `TELEMACO_MCP_SEARCH_CONTEXT_CHARS` | characters around each `browser_search` match | 80 |
+| `TELEMACO_MCP_MAX_NETWORK_REQUESTS` | entries from `browser_network_requests` | 500 |
+| `TELEMACO_MCP_MAX_CONSOLE_MESSAGES` | entries from `browser_console_messages` | 500 |
+| `TELEMACO_MCP_MAX_FORMS` | forms from `browser_detect_forms` | 100 |
+
+```bash
+# Pull whole pages instead of the first 4 KB
+TELEMACO_MCP_MAX_CHARS=0 telemaco mcp
+```
+
+These sit in the middle of a four-layer precedence chain:
+
+```text
+tool call argument > CLI flag > environment variable > config file > default
+```
+
+So an environment variable overrides the config file, and is in turn overridden by `--max-chars` and by a `max_chars` argument on an individual tool call. Per-process equivalent: `--max-chars`. See [Configuration file](Configuration-file.md) for the file layer.
+
 ## Logging
 
 ### `RUST_LOG`
