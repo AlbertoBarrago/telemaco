@@ -159,3 +159,68 @@ jobs:
           docker buildx imagetools create "${tags[@]}" \
             $(printf "$IMAGE@sha256:%s " *)
           docker buildx imagetools inspect "$IMAGE:$VERSION"
+
+  # Populates the Docker Hub repository overview (the page under the image
+  # name) from a dedicated file. It runs after merge so the image exists before
+  # the description is touched. The README is not used: it is longer than
+  # Docker Hub's 10,000-character cap on full_description and carries relative
+  # links (docs/, acceptance/) that do not resolve on Docker Hub, so a shorter,
+  # self-contained overview is published instead.
+  overview:
+    needs: merge
+    if: needs.build.outputs.configured == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      # Same credential guard as the build job, extended to the token: the
+      # overview needs both to authenticate against the Docker Hub API. A repo
+      # without secrets must skip this job, not fail it.
+      - name: Check Docker Hub credentials
+        id: creds
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set; skipping the overview publish."
+          fi
+
+      - if: steps.creds.outputs.configured == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Publish the repository overview
+        if: steps.creds.outputs.configured == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          description="$(cat DOCKERHUB_OVERVIEW.md)"
+          if [ "${#description}" -gt 10000 ]; then
+            echo "DOCKERHUB_OVERVIEW.md exceeds Docker Hub's 10,000-character limit" >&2
+            exit 1
+          fi
+          # Exchange the credentials for a JWT, then PATCH the repository.
+          # The response body is kept so a failure can be reported verbatim
+          # instead of hiding behind a green job.
+          token="$(curl -s -X POST https://hub.docker.com/v2/users/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"username\":\"$DOCKERHUB_USERNAME\",\"password\":\"$DOCKERHUB_TOKEN\"}" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+          payload="$(python3 -c 'import json,sys; print(json.dumps({"full_description": sys.stdin.read()}))' <<<"$description")"
+          status="$(curl -s -o /tmp/overview-response.json -w '%{http_code}' \
+            -X PATCH "https://hub.docker.com/v2/repositories/$DOCKERHUB_USERNAME/telemaco/" \
+            -H "Authorization: JWT $token" \
+            -H 'Content-Type: application/json' \
+            -d "$payload")"
+          if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+            echo "Docker Hub overview updated (HTTP $status)"
+          else
+            echo "Failed to update the Docker Hub overview (HTTP $status)" >&2
+            cat /tmp/overview-response.json >&2
+            exit 1
+          fi
