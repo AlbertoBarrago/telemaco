@@ -150,8 +150,16 @@ jobs:
       - name: Test render configuration
         run: cargo nextest run --release --features render --no-fail-fast
 
-      - name: Stage candidate binary for comparison
-        run: install -D -m 0755 target/release/telemaco "$RUNNER_TEMP/telemaco-ci/telemaco-pr"
+      - name: Stage candidate binaries for comparison
+        run: |
+          # Both binaries, in a directory of their own. `scrape` spawns
+          # telemaco-worker from its own directory, so a lone `telemaco` cannot
+          # run it; and base and candidate need separate directories or they
+          # would share one worker and the comparison would measure a mixture.
+          install -D -m 0755 target/release/telemaco \
+            "$RUNNER_TEMP/telemaco-ci/pr/telemaco"
+          install -D -m 0755 target/release/telemaco-worker \
+            "$RUNNER_TEMP/telemaco-ci/pr/telemaco-worker"
 
       - name: Build render and stealth release
         run: cargo build --release -p telemaco-cli --bins --features render,stealth
@@ -190,7 +198,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: telemaco-pr-${{ github.run_id }}
-          path: ${{ runner.temp }}/telemaco-ci/telemaco-pr
+          path: ${{ runner.temp }}/telemaco-ci/pr
           if-no-files-found: error
           overwrite: true
           retention-days: 1
@@ -212,7 +220,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: telemaco-pr-${{ github.run_id }}
-          path: ${{ runner.temp }}/telemaco-ci
+          path: ${{ runner.temp }}/telemaco-ci/pr
 
       - name: Install system dependencies
         run: |
@@ -249,8 +257,12 @@ jobs:
           )
           install -D -m 0755 \
             "$RUNNER_TEMP/telemaco-base-target/release/telemaco" \
-            "$RUNNER_TEMP/telemaco-ci/telemaco-base"
-          chmod 0755 "$RUNNER_TEMP/telemaco-ci/telemaco-pr"
+            "$RUNNER_TEMP/telemaco-ci/base/telemaco"
+          install -D -m 0755 \
+            "$RUNNER_TEMP/telemaco-base-target/release/telemaco-worker" \
+            "$RUNNER_TEMP/telemaco-ci/base/telemaco-worker"
+          chmod 0755 "$RUNNER_TEMP/telemaco-ci/pr/telemaco" \
+                     "$RUNNER_TEMP/telemaco-ci/pr/telemaco-worker"
 
       - name: Run the acceptance gate for base and candidate
         shell: bash
@@ -261,11 +273,11 @@ jobs:
           # A failing stage is not an error here: the comparison decides, since
           # only a stage that regressed against the base should block a PR.
           set +e
-          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/telemaco-base" \
+          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/base/telemaco" \
             python3 acceptance/run.py --json --runs 3 --warmup 1 \
               > "$results_root/acceptance-base.json"
           base_status=$?
-          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/telemaco-pr" \
+          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/pr/telemaco" \
             python3 acceptance/run.py --json --runs 3 --warmup 1 \
               > "$results_root/acceptance-pr.json"
           pr_status=$?
@@ -277,8 +289,8 @@ jobs:
       - name: Run interleaved latency and RSS smoke benchmark
         run: |
           python3 "$RUNNER_TEMP/telemaco-ci-scripts/perf_smoke.py" \
-            --base "$RUNNER_TEMP/telemaco-ci/telemaco-base" \
-            --candidate "$RUNNER_TEMP/telemaco-ci/telemaco-pr" \
+            --base "$RUNNER_TEMP/telemaco-ci/base/telemaco" \
+            --candidate "$RUNNER_TEMP/telemaco-ci/pr/telemaco" \
             --output "$RUNNER_TEMP/telemaco-ci-results/perf-smoke.json"
 
       - name: Compare acceptance correctness and latency
