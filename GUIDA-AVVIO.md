@@ -26,7 +26,7 @@ Tutti gli esempi qui sotto usano il percorso diretto:
 
 ```bash
 T=/Users/albz/Projects/telemaco/target/release/telemaco
-$T --version        # telemaco 0.1.0
+$T --version        # telemaco 0.1.1
 ```
 
 Se preferisci, crea un alias o un symlink in `~/.local/bin`.
@@ -238,7 +238,7 @@ Configurazione Claude Desktop:
 }
 ```
 
-Strumenti disponibili (37 alla versione 0.1.0): `browser_navigate`,
+Strumenti disponibili (37 alla versione 0.1.1): `browser_navigate`,
 `browser_snapshot`, `browser_interactive_elements`, `browser_click`,
 `browser_fill`, `browser_fill_form`, `browser_detect_forms`, `browser_type`,
 `browser_press_key`, `browser_select_option`, `browser_evaluate`,
@@ -294,7 +294,7 @@ Variabili d'ambiente utili (elenco completo in `docs/Environment-variables.md`):
 Verifiche end-to-end sul binario con una fixture locale: nessuna rete
 esterna, nessun sito da controllare. Copia e incolla tutto in un terminale;
 ogni test stampa `PASS` o `FAIL`. Tutti i comandi sono verificati sul build
-0.1.0 con feature `render`.
+0.1.1 con feature `render`.
 
 ```bash
 T=$PWD/target/release/telemaco
@@ -325,7 +325,10 @@ python3 -m http.server "$PORT" --directory "$D/fixture" >/dev/null 2>&1 &
 HTTPD=$!; sleep 1
 
 # 1) versione
-[ "$($T --version)" = "telemaco 0.1.0" ] && ok "versione" || bad "versione"
+# Confronto con la versione dichiarata nel manifest, non con una stringa
+# fissa: un test legato al numero esatto si rompe a ogni rilascio.
+V=$(grep -m1 '^version' "$(git rev-parse --show-toplevel)/Cargo.toml" | cut -d'"' -f2)
+[ "$($T --version)" = "telemaco $V" ] && ok "versione" || bad "versione"
 
 # 2) gate SSRF: senza flag il fetch a 127.0.0.1 deve fallire
 $T fetch "$U/index.html" --dump text 2>&1 | grep -q "not allowed" \
