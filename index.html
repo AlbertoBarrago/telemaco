@@ -369,27 +369,45 @@
     <div class="sec-head">
       <div class="kicker">Install</div>
       <h2>Up and running in seconds</h2>
-      <p>Prebuilt binaries, Docker, or build from source.</p>
+      <p>One-command installer, a published Docker image, or build from source.</p>
     </div>
     <div class="install-grid">
       <div class="install-card">
-        <h3><span class="n">1</span> Prebuilt binary</h3>
+        <h3><span class="n">1</span> Installer script</h3>
+        <pre><span class="cmt"># Right binary for your machine, then offers to</span>
+<span class="cmt"># register telemaco as an MCP server for the</span>
+<span class="cmt"># AI agents it finds (Claude, Cursor, Windsurf)</span>
+<span class="cmd">$</span> git clone https://github.com/AlbertoBarrago/telemaco.git
+<span class="cmd">$</span> cd telemaco
+<span class="cmd">$</span> ./install.sh</pre>
+      </div>
+      <div class="install-card">
+        <h3><span class="n">2</span> Docker</h3>
+        <pre><span class="cmt"># Published image, linux/amd64 + linux/arm64</span>
+<span class="cmd">$</span> docker pull albz222/telemaco:latest
+<span class="cmd">$</span> docker run -d --name telemaco \
+    -p 127.0.0.1:9222:9222 albz222/telemaco:latest</pre>
+      </div>
+      <div class="install-card">
+        <h3><span class="n">3</span> Prebuilt binary</h3>
         <pre><span class="cmt"># Linux x86_64</span>
 <span class="cmd">$</span> curl -LO https://github.com/AlbertoBarrago/telemaco/releases/latest/download/telemaco-x86_64-linux.tar.gz
 <span class="cmd">$</span> tar xzf telemaco-x86_64-linux.tar.gz
 <span class="cmd">$</span> ./telemaco fetch https://example.com --eval "document.title"</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">2</span> Docker</h3>
-        <pre><span class="cmd">$</span> docker build -t telemaco .
-<span class="cmd">$</span> docker run -d --name telemaco \
-    -p 127.0.0.1:9222:9222 telemaco</pre>
-      </div>
-      <div class="install-card">
-        <h3><span class="n">3</span> From source</h3>
+        <h3><span class="n">4</span> From source</h3>
         <pre><span class="cmd">$</span> git clone https://github.com/AlbertoBarrago/telemaco.git
 <span class="cmd">$</span> cd telemaco
 <span class="cmd">$</span> cargo build --release -p telemaco-cli --bins --features render</pre>
+      </div>
+      <div class="install-card">
+        <h3><span class="n">5</span> Update</h3>
+        <pre><span class="cmt"># Keep telemaco current</span>
+<span class="cmd">$</span> telemaco update            <span class="cmt"># latest release</span>
+<span class="cmd">$</span> telemaco update --check    <span class="cmt"># report only</span>
+<span class="cmt"># Keeps your build variant: a stealth install</span>
+<span class="cmt"># stays stealth instead of becoming the plain one</span></pre>
       </div>
     </div>
   </div>
@@ -447,7 +465,9 @@
         <span class="cmt"># Screenshot the settled page</span><br />
         <span class="cmd">$</span> telemaco fetch https://example.com --screenshot page.png<br /><br />
         <span class="cmt"># Scrape many URLs in parallel</span><br />
-        <span class="cmd">$</span> telemaco scrape url1 url2 url3 --concurrency 25 --format json
+        <span class="cmd">$</span> telemaco scrape url1 url2 url3 --concurrency 25 --format json<br /><br />
+        <span class="cmt"># Keep telemaco current</span><br />
+        <span class="cmd">$</span> telemaco update --check
       </div>
     </div>
   </div>
