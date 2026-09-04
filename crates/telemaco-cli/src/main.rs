@@ -1818,7 +1818,10 @@ async fn run_parallel_scrape(
 }
 
 fn dump_links(page: &Page) -> String {
-    let base_url = page.url.clone();
+    // The document base URL, not page.url: a `<base href>` changes what the
+    // page's relative hrefs point at, and resolving against the document URL
+    // hands back a plausible-looking but wrong target.
+    let base_url = page.base_url();
     page.with_dom(|dom| {
         let mut rendered = Vec::new();
         let links = dom.query_selector_all("a").unwrap_or_default();
@@ -1945,7 +1948,9 @@ fn extract_assets(dom: &telemaco_dom::DomTree, base_url: Option<&url::Url>) -> S
 }
 
 fn dump_assets(page: &Page) -> String {
-    let base_url = page.url.clone();
+    // Same reason as dump_links: subresource src attributes resolve against the
+    // document base URL.
+    let base_url = page.base_url();
     let dom_ndjson = page
         .with_dom(|dom| extract_assets(dom, base_url.as_ref()))
         .unwrap_or_default();

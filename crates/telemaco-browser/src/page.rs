@@ -1705,6 +1705,15 @@ impl Page {
         self.js = Some(rt);
     }
 
+    /// The document base URL, which is what relative URLs on the page resolve
+    /// against. Prefer this over [`Page::url`] for anything that turns a page's
+    /// relative href or src into an absolute URL: with a `<base href>` present
+    /// the two differ, and using the document URL silently produces the wrong
+    /// target.
+    pub fn base_url(&self) -> Option<url::Url> {
+        self.resolve_base_url()
+    }
+
     /// Resolve the document base URL per HTML spec:
     /// https://html.spec.whatwg.org/multipage/urls-and-fetching.html#document-base-url
     /// Falls back to self.url when no <base href> exists.
