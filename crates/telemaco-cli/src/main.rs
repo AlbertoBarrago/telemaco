@@ -1,3 +1,5 @@
+mod focus;
+
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -137,6 +139,17 @@ enum Command {
 
         #[arg(long)]
         selector: Option<String>,
+
+        /// Narrow `--dump markdown` to blocks containing these keywords
+        /// (repeatable, case-insensitive). Keeps each hit, a window of
+        /// surrounding blocks, the heading chain above it, and the page
+        /// title. A summary of what was kept is printed to stderr.
+        #[arg(long)]
+        focus: Vec<String>,
+
+        /// Number of context blocks kept around each --focus hit.
+        #[arg(long, default_value_t = 1)]
+        focus_context: usize,
 
         /// Maximum adaptive post-load settle time in seconds. When supplied
         /// explicitly, this is a fixed delay; the default is a 5-second cap
@@ -430,6 +443,8 @@ async fn main() -> anyhow::Result<()> {
             url,
             dump,
             selector,
+            focus,
+            focus_context,
             wait,
             timeout,
             wait_until,
@@ -480,6 +495,8 @@ async fn main() -> anyhow::Result<()> {
                     &url,
                     dump,
                     selector,
+                    focus.clone(),
+                    focus_context,
                     wait.unwrap_or(5),
                     wait_is_fixed,
                     timeout,
@@ -699,6 +716,8 @@ async fn run_fetch(
     url_str: &str,
     dump: Option<DumpFormat>,
     selector: Option<String>,
+    focus: Vec<String>,
+    focus_context: usize,
     wait_secs: u64,
     wait_is_fixed: bool,
     timeout_secs: u64,
@@ -1100,6 +1119,26 @@ async fn run_fetch(
         // Handled above via the short-circuit branch; unreachable here.
         DumpFormat::Original => unreachable!("Original dump handled before page navigation"),
     };
+
+    // --focus narrows markdown output to keyword-bearing blocks. Applies to
+    // --dump markdown only; a warning is printed for other dump formats.
+    let rendered = if focus.is_empty() {
+        rendered
+    } else if dump != DumpFormat::Markdown {
+        eprintln!("Warning: --focus applies to --dump markdown only; ignoring it for this output format");
+        rendered
+    } else {
+        let out = focus::focus_filter(&rendered, &focus, focus_context);
+        if !quiet {
+            if out.matched {
+                eprintln!("focus: kept {} of {} blocks", out.kept, out.total);
+            } else {
+                eprintln!("focus: no blocks matched {:?}", focus);
+            }
+        }
+        out.text
+    };
+
     write_or_print(rendered, output.as_ref()).await?;
 
     // Save cookies to disk if storage_dir is configured
@@ -1941,8 +1980,9 @@ mod tests {
     use super::{
         configure_fetch_navigation_timeout, effective_v8_flags, extract_assets,
         extract_readable_text, fetch_original_bytes, is_quiet_command, link_kind_from_rel,
-        merge_proxy, normalize_v8_flags, read_urls_from_file, resolve_asset_url, select_log_filter,
-        write_or_print, write_or_print_bytes, Args, Command, DumpFormat, DEFAULT_V8_FLAGS,
+        merge_proxy, normalize_v8_flags, read_urls_from_file, resolve_asset_url, run_fetch,
+        select_log_filter, write_or_print, write_or_print_bytes, Args, Command, DumpFormat,
+        DEFAULT_V8_FLAGS,
     };
     use clap::Parser;
     use telemaco_dom::parse_html;
@@ -2154,6 +2194,161 @@ mod tests {
     #[test]
     fn default_filter_is_warn() {
         assert_eq!(select_log_filter(false, false), "warn");
+    }
+
+    // --focus / --focus-context CLI surface.
+    #[test]
+    fn parsed_fetch_focus_flags() {
+        let args = Args::try_parse_from([
+            "telemaco",
+            "fetch",
+            "--dump",
+            "markdown",
+            "--focus",
+            "rate limit",
+            "--focus",
+            "503",
+            "--focus-context",
+            "2",
+            "https://example.com/doc",
+        ])
+        .expect("clap should accept --focus and --focus-context");
+        match args.command {
+            Some(Command::Fetch { focus, focus_context, .. }) => {
+                assert_eq!(focus, vec!["rate limit".to_string(), "503".to_string()]);
+                assert_eq!(focus_context, 2);
+            }
+            _ => panic!("expected Fetch command"),
+        }
+    }
+
+    #[test]
+    fn focus_flags_default_empty_and_one() {
+        let args = Args::try_parse_from([
+            "telemaco",
+            "fetch",
+            "--dump",
+            "markdown",
+            "https://example.com/doc",
+        ])
+        .expect("clap should parse fetch without focus flags");
+        match args.command {
+            Some(Command::Fetch { focus, focus_context, .. }) => {
+                assert!(focus.is_empty());
+                assert_eq!(focus_context, 1);
+            }
+            _ => panic!("expected Fetch command"),
+        }
+    }
+
+    // Real-site checks for --focus. Ignored by default: they need network
+    // and a full render. Run with `cargo test -p telemaco-cli -- --ignored`.
+    //
+    // Each test asserts two things:
+    //   1. size: focused markdown is meaningfully smaller than the full dump
+    //   2. retention: a known sentence about the focus topic survives
+    async fn focused_vs_full(
+        url: &str,
+        keywords: &[&str],
+        retention_needle: &str,
+    ) -> (usize, usize) {
+        let dir = std::env::temp_dir();
+        let full = dir.join(format!("telemaco-focus-full-{}.md", std::process::id()));
+        let focused = dir.join(format!("telemaco-focus-out-{}.md", std::process::id()));
+
+        run_fetch(
+            url,
+            Some(DumpFormat::Markdown),
+            None,
+            vec![],
+            1,
+            5,
+            false,
+            45,
+            "load",
+            None,
+            false,
+            None,
+            Some(full.clone()),
+            true,
+            None,
+            None,
+            false,
+            false,
+            None,
+        )
+        .await
+        .expect("full fetch");
+
+        run_fetch(
+            url,
+            Some(DumpFormat::Markdown),
+            None,
+            keywords.iter().map(|k| k.to_string()).collect(),
+            1,
+            5,
+            false,
+            45,
+            "load",
+            None,
+            false,
+            None,
+            Some(focused.clone()),
+            true,
+            None,
+            None,
+            false,
+            false,
+            None,
+        )
+        .await
+        .expect("focused fetch");
+
+        let full_text = std::fs::read_to_string(&full).expect("read full dump");
+        let focused_text = std::fs::read_to_string(&focused).expect("read focused dump");
+        let _ = std::fs::remove_file(&full);
+        let _ = std::fs::remove_file(&focused);
+
+        assert!(
+            focused_text.len() < full_text.len(),
+            "focused output ({} bytes) should be smaller than full ({} bytes)",
+            focused_text.len(),
+            full_text.len()
+        );
+        assert!(
+            focused_text.contains(retention_needle),
+            "focused output should retain the needle {:?}",
+            retention_needle
+        );
+        (full_text.len(), focused_text.len())
+    }
+
+    // Salesforce docs are a heavy JS-rendered SPA with cookie-banner noise.
+    // Known-good content lives under <main id="maincontent">.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn salesforce_focus_reduces_and_retains() {
+        let (full, focused) = focused_vs_full(
+            "https://developer.salesforce.com/docs/atlas.en-us.chatterapi.meta/chatterapi/intro_what_is_chatter_connect.htm",
+            &["rate limit", "503"],
+            "503 Service Unavailable",
+        )
+        .await;
+        println!("salesforce: full {} bytes -> focused {} bytes", full, focused);
+    }
+
+    // Static docs site with dense boilerplate: a keyword about the API
+    // itself should keep the derive-related prose and drop the nav.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn docs_rs_focus_reduces_and_retains() {
+        let (full, focused) = focused_vs_full(
+            "https://docs.rs/serde/latest/serde/",
+            &["serialize", "deserialize"],
+            "Serialize",
+        )
+        .await;
+        println!("docs.rs: full {} bytes -> focused {} bytes", full, focused);
     }
 
     #[test]
@@ -2409,6 +2604,8 @@ mod tests {
             url: Some("https://x".to_string()),
             dump: Some(super::DumpFormat::Html),
             selector: None,
+            focus: vec![],
+            focus_context: 1,
             file: None,
             concurrency: std::num::NonZeroUsize::new(1).unwrap(),
             wait: Some(5),

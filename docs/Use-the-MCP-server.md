@@ -51,7 +51,7 @@ Read the page:
 
 - `browser_snapshot`: current URL, title, readable body text, and interactive
   element references. Optional `max_chars` limits the returned text.
-- `browser_markdown`, `browser_links`, `browser_extract`: page as markdown, link list, or structured content.
+- `browser_markdown`, `browser_links`, `browser_extract`: page as markdown, link list, or structured content. `browser_markdown` paginates at block boundaries (`page=1`, 2, …; default 4000 chars per page): the first call converts the page once, later pages are served from cache without re-conversion.
 - `browser_interactive_elements`, `browser_detect_forms`: actionable elements and form fields.
 - `browser_get_attribute`, `browser_count`, `browser_search`: read an attribute, count matches, find text.
 

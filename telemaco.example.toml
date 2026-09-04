@@ -22,8 +22,10 @@
 # Precedence, lowest to highest:
 #   default  <  this file  <  environment variable  <  CLI flag  <  tool argument
 
-# Characters of page text from browser_markdown and browser_snapshot.
-# Raise this when you want whole articles rather than the opening section.
+# Characters per page from browser_markdown, and the text cap for
+# browser_snapshot. browser_markdown paginates at block boundaries rather
+# than cutting mid-word, so this is a page size: 0 packs the whole document
+# into a single page instead of splitting it.
 max_chars = 4000
 
 # Anchors returned by browser_links.

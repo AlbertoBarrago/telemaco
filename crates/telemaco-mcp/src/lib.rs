@@ -3,6 +3,7 @@
 // limit (128) overflows. Bumping for this crate only.
 #![recursion_limit = "512"]
 
+pub mod blocks;
 pub mod config;
 pub mod http;
 
@@ -78,6 +79,11 @@ pub struct BrowserState {
     /// at startup from config file, environment, and CLI flag; a tool argument
     /// still overrides per call. See [`crate::config`].
     limits: ExtractionLimits,
+    /// Full-page markdown from the last `browser_markdown` conversion,
+    /// keyed by page URL, so `page=N` requests slice a cached document
+    /// instead of re-running the V8 converter on every call. Cleared on
+    /// navigation; `refresh: true` forces re-conversion.
+    markdown_cache: Option<(String, String)>,
 }
 
 impl BrowserState {
@@ -96,6 +102,7 @@ impl BrowserState {
             console_messages: Vec::new(),
             interactive_refs: HashMap::new(),
             limits,
+            markdown_cache: None,
         }
     }
 
@@ -485,11 +492,13 @@ fn handle_tools_list(id: Value, limits: &ExtractionLimits) -> RpcResponse {
             },
             {
                 "name": "browser_markdown",
-                "description": "Extract the current page as Markdown (headings, paragraphs, lists, links, code blocks). Use this instead of browser_snapshot when you want token-dense structured content rather than plain text.",
+                "description": "Extract the current page as Markdown (headings, paragraphs, lists, links, code blocks). Use this instead of browser_snapshot when you want token-dense structured content rather than plain text. The document is paginated at block boundaries: the first call converts the page once and returns page 1; pass page=2, 3, ... to read further chunks without re-converting.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "max_chars": { "type": "number", "description": format!("Truncate to this many characters (default {max_chars})") }
+                        "max_chars": { "type": "number", "description": format!("Max characters per page (default {max_chars}). Blocks are never cut in half; an oversized block is split across pages.") },
+                        "page": { "type": "number", "description": "1-based page to read. Default 1. Pages beyond the end return an explicit out-of-range message." },
+                        "refresh": { "type": "boolean", "description": "Force re-conversion of the current page instead of serving the cached markdown" }
                     }
                 }
             },
@@ -998,6 +1007,9 @@ async fn tool_navigate(args: &Value, state: &mut BrowserState) -> Result<String,
     let summary = format!("Navigated to {} — \"{}\"", page.url_string(), page.title);
     // DOM changed — invalidate the ref table. Next snapshot will rebuild.
     state.interactive_refs.clear();
+    // DOM changed, so the markdown cache is stale even if the URL is the
+    // same (refresh of the same page). Next browser_markdown re-converts.
+    state.markdown_cache = None;
     Ok(summary)
 }
 
@@ -1261,15 +1273,55 @@ fn tool_close(state: &mut BrowserState) -> Result<String, String> {
 /// Convert the rendered page to Markdown by running the JS-side converter
 /// already used by `telemaco fetch --dump markdown`. More token-dense than
 /// browser_snapshot for content-heavy pages (article bodies, docs sites).
+///
+/// The full document is converted once and cached per URL; the `page`
+/// parameter (1-based) returns successive block-boundary chunks of the
+/// cached document without touching V8 again. `refresh: true` forces
+/// re-conversion of the current page.
 fn tool_markdown(args: &Value, state: &mut BrowserState) -> Result<String, String> {
+    // The page size comes from the resolved config, not a constant: this is
+    // the layer the CLI flag, the environment, and the config file all feed.
+    // `override_with` also maps the 0 sentinel to usize::MAX, which packs the
+    // whole document into a single page and, as a side effect, keeps a zero
+    // from ever reaching split_long_line, where it would slice at a byte that
+    // is not a character boundary.
     let max_chars = ExtractionLimits::override_with(
         state.limits.max_chars,
         args.get("max_chars").and_then(Value::as_u64),
     );
-    let page = state.page_mut();
-    let result = page.evaluate(telemaco_browser::HTML_TO_MARKDOWN_JS);
-    let md = result.as_str().unwrap_or_default();
-    Ok(truncate(md, max_chars))
+    let page_no = args.get("page").and_then(Value::as_u64).map(|n| n as usize)
+        .unwrap_or(1).max(1);
+    let refresh = args.get("refresh").and_then(Value::as_bool).unwrap_or(false);
+
+    let url = state.page_mut().url_string();
+    let md: String = match &state.markdown_cache {
+        Some((cached_url, cached_md)) if !refresh && cached_url == &url => cached_md.clone(),
+        _ => {
+            let page = state.page_mut();
+            let result = page.evaluate(telemaco_browser::HTML_TO_MARKDOWN_JS);
+            let md = result.as_str().unwrap_or_default().to_string();
+            state.markdown_cache = Some((url, md.clone()));
+            md
+        }
+    };
+
+    let (text, total) = blocks::paginate(&md, max_chars, page_no);
+    if total == 0 {
+        return Ok("(empty page: nothing to convert)".to_string());
+    }
+    if text.is_empty() {
+        return Ok(format!(
+            "Page {page_no} is beyond the end of this document ({total} page(s) total). Call browser_markdown with page=1..{total}."
+        ));
+    }
+    if page_no < total {
+        Ok(format!(
+            "{text}\n\n<!-- markdown page {page_no} of {total} (call browser_markdown with page={} for more) -->",
+            page_no + 1
+        ))
+    } else {
+        Ok(format!("{text}\n\n<!-- markdown page {page_no} of {total} (end of document) -->"))
+    }
 }
 
 /// Enumerate every `<a href>` on the page. One JSON object per line so
@@ -2205,6 +2257,164 @@ mod tests {
         );
     }
 
+    // --- adaptation of the pagination work onto configurable limits ---
+
+    /// A state whose limits differ from the defaults, with the markdown cache
+    /// pre-seeded so the paginated path runs without V8.
+    fn seeded_state_with(url: &str, md: &str, limits: ExtractionLimits) -> BrowserState {
+        let mut state = BrowserState::new(None, None, false, limits);
+        let _ = state.page_mut();
+        state.markdown_cache = Some((url.to_string(), md.to_string()));
+        state
+    }
+
+    #[test]
+    fn configured_cap_drives_pagination_with_no_tool_argument() {
+        // The whole point of the adaptation: with no `max_chars` in the call,
+        // the page size must come from the resolved config rather than from a
+        // constant. A small configured cap has to force a multi-page document.
+        let doc = "alpha bravo\n\ncharlie delta\n\necho foxtrot\n\ngolf hotel\n";
+        let limits = ExtractionLimits { max_chars: 20, ..Default::default() };
+        let mut state = seeded_state_with("about:blank", doc, limits);
+
+        let page1 = tool_markdown(&json!({}), &mut state).expect("page 1");
+        let total = page_total(&page1);
+        assert!(total > 1, "a 20-character cap must split this document, got {total} page(s)");
+        assert!(!page1.contains("golf hotel"), "page 1 must not carry the whole document");
+    }
+
+    #[test]
+    fn unlimited_configured_cap_returns_the_whole_document_in_one_page() {
+        // 0 is the unlimited sentinel everywhere else, and pagination has to
+        // agree with it: one page holding everything, not the one-character
+        // page a naive `.max(1)` clamp would produce.
+        let doc = "alpha bravo\n\ncharlie delta\n\necho foxtrot\n\ngolf hotel\n";
+        let limits = ExtractionLimits { max_chars: 0, ..Default::default() };
+        let mut state = seeded_state_with("about:blank", doc, limits);
+
+        let out = tool_markdown(&json!({}), &mut state).expect("page 1");
+        assert!(out.contains("alpha bravo") && out.contains("golf hotel"));
+        assert!(out.contains("page 1 of 1"), "unlimited must yield exactly one page: {out}");
+    }
+
+    #[test]
+    fn packing_never_panics_or_loses_multibyte_text() {
+        // The upstream `.max(1)` clamp guarded split_long_line from slicing at
+        // byte 1 of a multi-byte character. Routing the cap through
+        // ExtractionLimits keeps a zero from reaching that path, and small
+        // non-zero caps must stay safe too. Every character has to survive.
+        let doc = "pero\u{300} \u{c8} accentata u\u{308}ni\u{308}co\u{308}de\u{308} \u{65e5}\u{672c}\u{8a9e}\u{306e}\u{30c6}\u{30ad}\u{30b9}\u{30c8}\n\nsecondo blocco a\u{300}e\u{300}i\u{300}o\u{300}u\u{300}\n";
+        let expected: String = doc.chars().filter(|c| !c.is_whitespace()).collect();
+
+        for raw in [0usize, 1, 3, 10, 4_000] {
+            let pages = blocks::pack_pages(doc, ExtractionLimits::cap(raw));
+            let got: String = pages.concat().chars().filter(|c| !c.is_whitespace()).collect();
+            assert_eq!(
+                got, expected,
+                "cap {raw} lost or corrupted characters while packing"
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_schema_advertises_the_configured_page_size() {
+        let limits = ExtractionLimits { max_chars: 12_345, ..Default::default() };
+        let described = property_description(&listed_tools_with(&limits), "browser_markdown", "max_chars");
+        assert!(
+            described.contains("12345"),
+            "the paginated schema must still report the resolved cap: {described}"
+        );
+        assert!(
+            described.contains("Blocks are never cut in half"),
+            "the pagination wording must survive the adaptation: {described}"
+        );
+    }
+
+    // browser_markdown pagination against a manually-seeded cache: the
+    // cache-hit path never calls page.evaluate, so no V8 is needed.
+    fn seeded_state(url: &str, md: &str) -> BrowserState {
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+        // Touch page_mut so the active tab exists and url_string() is set.
+        let _ = state.page_mut();
+        state.markdown_cache = Some((url.to_string(), md.to_string()));
+        state
+    }
+
+    fn tool_markdown_page(state: &mut BrowserState, page: u64, max_chars: usize) -> String {
+        tool_markdown(&json!({ "page": page, "max_chars": max_chars }), state)
+            .expect("tool_markdown ok")
+    }
+
+    #[test]
+    fn browser_markdown_serves_cached_pages_without_reconversion() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        // Small ceiling forces multiple pages from the cached document.
+        let p1 = tool_markdown_page(&mut state, 1, 12);
+        assert!(p1.contains("alpha"));
+        assert!(p1.contains("page 1 of"), "marker missing: {p1}");
+        let p2 = tool_markdown_page(&mut state, 2, 12);
+        assert!(p2.contains("beta"), "p2: {p2}");
+        assert!(p2.contains("page 2 of 4"), "p2: {p2}");
+        // Cache untouched: still the same document.
+        assert_eq!(state.markdown_cache.as_ref().unwrap().1, doc);
+    }
+
+    #[test]
+    fn browser_markdown_last_page_says_end() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        let (_, total) = blocks::paginate(doc, 12, 1);
+        let last = tool_markdown_page(&mut state, total as u64, 12);
+        assert!(last.contains("end of document"));
+        assert!(last.contains(&format!("page {total} of {total}")));
+    }
+
+    #[test]
+    fn browser_markdown_beyond_end_is_explicit() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        let (_, total) = blocks::paginate(doc, 12, 1);
+        let out = tool_markdown_page(&mut state, total as u64 + 5, 12);
+        assert!(out.contains("beyond the end"));
+        assert!(out.contains(&format!("{total} page(s) total")));
+    }
+
+    #[test]
+    fn browser_markdown_url_change_invalidates_cache() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        // Active tab URL differs from the cached URL: the cached document
+        // must not be served; re-conversion of a blank page yields "".
+        state.markdown_cache = Some(("https://other.example".to_string(), doc.to_string()));
+        let out = tool_markdown(&json!({ "page": 1 }), &mut state).unwrap();
+        assert!(out.contains("empty page"));
+        // The empty conversion replaced the stale cache entry.
+        let (url, md) = state.markdown_cache.as_ref().unwrap();
+        assert_eq!(url, "about:blank");
+        assert_eq!(md, "");
+    }
+
+    #[test]
+    fn browser_markdown_refresh_forces_reconversion() {
+        let doc = "alpha\n\nbeta\n\ngamma\n\ndelta\n";
+        let mut state = seeded_state("about:blank", doc);
+        let out = tool_markdown(&json!({ "page": 1, "refresh": true }), &mut state).unwrap();
+        // Blank page converts to nothing; cache replaced with "".
+        assert!(out.contains("empty page"));
+        assert_eq!(state.markdown_cache.as_ref().unwrap().1, "");
+    }
+
+    #[test]
+    fn browser_markdown_schema_documents_pagination() {
+        let tools = listed_tools();
+        let md = tools.iter().find(|tool| tool["name"] == "browser_markdown")
+            .expect("browser_markdown tool");
+        assert!(md["inputSchema"]["properties"]["page"].is_object());
+        assert!(md["inputSchema"]["properties"]["refresh"].is_object());
+        assert!(md["description"].as_str().unwrap().contains("paginated"));
+    }
+
     #[test]
     fn tool_schemas_expose_snapshot_limit_without_nested_properties() {
         let tools = listed_tools();
@@ -2517,6 +2727,223 @@ mod tests {
         assert_eq!(
             actual,
             json!(r#"{"domChecked":true,"checkedCommitted":true,"checkTrusted":true,"selValue":"b","selectTrusted":true}"#),
+        );
+    }
+
+    // Real-site pagination checks for browser_markdown. Ignored by default:
+    // needs network and a full render. Run with
+    // `cargo test -p telemaco-mcp --lib -- --ignored --nocapture`.
+    //
+    // The two tests pin the two agent-facing scenarios:
+    //   - Salesforce: the needed sentence (503 rate-limit note) sits in the
+    //     first ~4000 chars. Page 1 is sufficient; page 2 carries only the
+    //     OneTrust cookie banner. An agent can stop after page 1.
+    //   - docs.rs: the Serde overview prose is split at the first page
+    //     boundary ("usage examples." ends page 1; the reflection/trait
+    //     paragraphs start page 2). The agent MUST read page 2 to get the
+    //     rest, and pagination must hand it over losslessly.
+    //
+    // Both also verify page>=2 is served from the cache, not re-converted.
+    async fn navigate_to(url: &str, state: &mut BrowserState) {
+        let page = state.page_mut();
+        page.set_navigation_timeout(std::time::Duration::from_secs(60));
+        page.navigate_with_wait(url, telemaco_browser::lifecycle::WaitUntil::from_str("load"))
+            .await
+            .expect("navigate");
+        // SPA content mounts after load; same settle the CLI does.
+        page.settle(5000).await;
+    }
+
+    fn page_total(marker_page: &str) -> usize {
+        marker_page.split("page 1 of ")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .and_then(|s| s.parse::<usize>().ok())
+            .expect("page 1 carries a total page count")
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn salesforce_page1_suffices_and_page2_is_banner_noise() {
+        const URL: &str = "https://developer.salesforce.com/docs/atlas.en-us.chatterapi.meta/chatterapi/intro_what_is_chatter_connect.htm";
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+        navigate_to(URL, &mut state).await;
+
+        let t0 = std::time::Instant::now();
+        let p1 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("page 1");
+        let convert_elapsed = t0.elapsed();
+        let current_url = state.page_mut().url_string();
+        assert!(
+            state.markdown_cache.as_ref().expect("cache seeded").0 == current_url,
+            "cache keyed by page URL"
+        );
+
+        let total = page_total(&p1);
+        assert!(total >= 2, "expected multi-page document, got {total}");
+
+        // THE SUFFICIENT CASE: everything needed is on page 1.
+        assert!(
+            p1.contains("503 Service Unavailable"),
+            "the 503 rate-limit note must be on page 1 (agent can stop here)"
+        );
+
+        // Page 2 exists (marker says so) and is a pure cache hit.
+        let t1 = std::time::Instant::now();
+        let p2 = tool_markdown(&json!({ "page": 2 }), &mut state).expect("page 2");
+        let cached_elapsed = t1.elapsed();
+        assert!(
+            cached_elapsed < convert_elapsed / 20,
+            "page 2 must be a cache hit: convert {:?} vs cached {:?}",
+            convert_elapsed,
+            cached_elapsed
+        );
+        assert!(p2.contains("page 2 of"), "p2 marker missing: {p2}");
+        // Page 2 on this page is the cookie banner: real page, no content.
+        assert!(
+            p2.contains("Cookie Consent Manager"),
+            "page 2 should carry the banner noise an agent can ignore"
+        );
+        println!(
+            "salesforce: {total} pages, convert {:?}, cached {:?}, page 2 = banner noise (agent stops at page 1)",
+            convert_elapsed,
+            cached_elapsed
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn docs_rs_page2_carries_the_core_content() {
+        const URL: &str = "https://docs.rs/serde/latest/serde/";
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+        navigate_to(URL, &mut state).await;
+
+        let p1 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("page 1");
+        let total = page_total(&p1);
+        assert!(total >= 2, "expected multi-page document, got {total}");
+
+        // THE MUST-CONTINUE CASE: the overview prose continues past the
+        // first page boundary. Page 1 ends after "usage examples."; the
+        // reflection/trait-system paragraphs live on page 2.
+        assert!(
+            !p1.contains("Where many other languages rely on runtime reflection"),
+            "the continuation prose must NOT be on page 1 for this fixture"
+        );
+
+        let t0 = std::time::Instant::now();
+        let p2 = tool_markdown(&json!({ "page": 2 }), &mut state).expect("page 2");
+        let cached_elapsed = t0.elapsed();
+        assert!(
+            p2.contains("Where many other languages rely on runtime reflection"),
+            "the continuation prose must be reachable on page 2"
+        );
+        assert!(p2.contains("page 2 of"), "p2 marker missing: {p2}");
+        println!(
+            "docs.rs: {total} pages, p1 {} chars, continuation on page 2, read {:?} (cache hit)",
+            p1.len(),
+            cached_elapsed
+        );
+    }
+
+    // Local-fixture E2E: a page whose paragraph is a single unbreakable
+    // ~13k-char markdown line plus a large code fence. Pins the ceiling
+    // guarantee (no page ever exceeds max_chars), losslessness across
+    // pages, and the cache-hit latency for pages >= 2.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires a local http.server on 127.0.0.1:8931"]
+    async fn local_giant_blocks_respect_ceiling_and_losslessness() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        const URL: &str = "http://127.0.0.1:8931/site/giant.html";
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+        navigate_to(URL, &mut state).await;
+
+        let p1 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("page 1");
+        let total = page_total(&p1);
+        assert!(total >= 3, "giant fixture should span >= 3 pages, got {total}");
+
+        let mut whole = String::new();
+        for page_no in 1..=total {
+            let out = tool_markdown(&json!({ "page": page_no }), &mut state)
+                .unwrap_or_else(|e| panic!("page {page_no}: {e}"));
+            // Ceiling: body (marker excluded) never exceeds max_chars.
+            let body = out.split("\n\n<!-- markdown page").next().unwrap_or(&out);
+            assert!(
+                body.chars().count() <= 4000,
+                "page {page_no} exceeds the ceiling: {} chars",
+                body.len()
+            );
+            if !whole.is_empty() {
+                whole.push_str("\n\n");
+            }
+            whole.push_str(out.trim_end());
+        }
+
+        // Losslessness: head, tail, and both fence ends survive.
+        assert!(whole.contains("HEAD-SENTENCE-START"), "paragraph head lost");
+        assert!(whole.contains("TAIL-SENTENCE-END"), "paragraph tail lost");
+        assert!(whole.contains("TOKEN-FENCE-HEAD"), "fence head lost");
+        assert!(whole.contains("TOKEN-FENCE-TAIL"), "fence tail lost");
+        println!("giant fixture: {total} pages, whole {} chars", whole.len());
+    }
+
+    // Local-fixture E2E: navigation must invalidate or re-key the cache:
+    // browser_markdown after navigating elsewhere must never serve the
+    // previous page's cached document.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires a local http.server on 127.0.0.1:8931"]
+    async fn local_navigation_rekeys_markdown_cache() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        const A: &str = "http://127.0.0.1:8931/site/article.html";
+        const B: &str = "http://127.0.0.1:8931/site/giant.html";
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+
+        navigate_to(A, &mut state).await;
+        let md_a = tool_markdown(&json!({ "page": 1 }), &mut state).expect("md A");
+        assert!(md_a.contains("Rust ownership rules"), "page A content: {md_a}");
+
+        navigate_to(B, &mut state).await;
+        let md_b = tool_markdown(&json!({ "page": 1 }), &mut state).expect("md B");
+        assert!(md_b.contains("Giant Block Fixture"), "page B content: {md_b}");
+        assert!(
+            !md_b.contains("Rust ownership rules"),
+            "stale page A content leaked into page B"
+        );
+
+        // Back to A: cache was keyed to B (or cleared), must re-convert.
+        navigate_to(A, &mut state).await;
+        let md_a2 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("md A again");
+        assert!(md_a2.contains("Rust ownership rules"), "page A re-navigation: {md_a2}");
+        assert!(!md_a2.contains("Giant Block Fixture"), "stale page B leaked back");
+    }
+
+    // Real-site E2E: two tabs on different sites, markdown interleaved.
+    // The cache is keyed by the ACTIVE tab's URL: switching tabs must
+    // re-key, and repeated interleaved reads must always return the right
+    // site's content, never a cross-contaminated document.
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires network and full render"]
+    async fn tab_interleaved_markdown_never_cross_contaminates() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+
+        // Tab 1: example.com (single-page doc).
+        navigate_to("https://example.com", &mut state).await;
+        let md_example = tool_markdown(&json!({ "page": 1 }), &mut state).expect("example.com");
+        assert!(md_example.contains("Example Domain"));
+        assert!(md_example.contains("end of document"), "example.com fits one page");
+
+        // Tab 2: docs.rs (multi-page doc) via a new tab.
+        let _tab2 = tool_tab_new(&json!({}), &mut state).await.expect("tab 2");
+        navigate_to("https://docs.rs/serde/latest/serde/", &mut state).await;
+        let md_docs = tool_markdown(&json!({ "page": 1 }), &mut state).expect("docs.rs");
+        assert!(md_docs.contains("serde"), "docs.rs content: {md_docs}");
+
+        // Switch back to tab 1: content must be example.com again.
+        tool_tab_switch(&json!({ "tab_id": "tab-1" }), &mut state).expect("switch to tab-1");
+        let md_example2 = tool_markdown(&json!({ "page": 1 }), &mut state).expect("example again");
+        assert!(md_example2.contains("Example Domain"));
+        assert!(
+            !md_example2.contains("serde"),
+            "docs.rs content leaked into example.com tab"
         );
     }
 }

@@ -130,7 +130,7 @@ All of them take a plain integer, and `0` means unlimited. An unparsable value i
 
 | Variable | Controls | Default |
 |---|---|---|
-| `TELEMACO_MCP_MAX_CHARS` | characters of page text from `browser_markdown` and `browser_snapshot` | 4000 |
+| `TELEMACO_MCP_MAX_CHARS` | characters per page from `browser_markdown`, and the text cap for `browser_snapshot` | 4000 |
 | `TELEMACO_MCP_MAX_LINKS` | anchors from `browser_links` | 100 |
 | `TELEMACO_MCP_MAX_INTERACTIVE` | elements from `browser_interactive_elements` | 100 |
 | `TELEMACO_MCP_MAX_SEARCH_RESULTS` | matches from `browser_search` | 10 |
@@ -140,7 +140,7 @@ All of them take a plain integer, and `0` means unlimited. An unparsable value i
 | `TELEMACO_MCP_MAX_FORMS` | forms from `browser_detect_forms` | 100 |
 
 ```bash
-# Pull whole pages instead of the first 4 KB
+# One page holding the whole document, instead of the first 4 KB
 TELEMACO_MCP_MAX_CHARS=0 telemaco mcp
 ```
 

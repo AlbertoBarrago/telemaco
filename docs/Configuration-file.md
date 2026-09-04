@@ -32,7 +32,7 @@ Only the keys you set are changed; the rest keep their defaults.
 
 | Key | Controls | Default |
 |---|---|---|
-| `max_chars` | characters of page text from `browser_markdown` and `browser_snapshot` | 4000 |
+| `max_chars` | characters per page from `browser_markdown`, and the text cap for `browser_snapshot` | 4000 |
 | `max_links` | anchors from `browser_links` | 100 |
 | `max_interactive` | elements from `browser_interactive_elements` | 100 |
 | `max_search_results` | matches from `browser_search` | 10 |
@@ -47,7 +47,7 @@ Only the keys you set are changed; the rest keep their defaults.
 
 MCP output lands directly in an agent's context window. A single uncapped page dump can consume a whole window, which is why the defaults are conservative and raising them is a deliberate act rather than the built-in behavior.
 
-When a result is capped, the tool says so: text is followed by the existing `...(truncated, N more chars)` marker, and list results by a line naming how many entries were omitted out of the total. A capped result never looks like a complete one.
+When a result is capped, the tool says so. `browser_markdown` paginates at block boundaries and closes every page with a marker naming the page and the total, so the agent knows to ask for the next one. `browser_snapshot` appends the `...(truncated, N more chars)` marker, and list results a line naming how many entries were omitted out of the total. A capped result never looks like a complete one.
 
 ## A worked example
 
@@ -55,9 +55,11 @@ Reading long articles in full, while keeping the other caps modest:
 
 ```toml
 [mcp.limits]
-max_chars = 0        # whole pages, however long
+max_chars = 0        # one page holding the whole document, however long
 max_links = 50       # but do not enumerate every anchor
 ```
+
+For `browser_markdown`, `0` means the document is packed into a single page rather than split; the agent gets everything in one call and pays for it in context.
 
 ```bash
 telemaco --config ./telemaco.toml mcp
