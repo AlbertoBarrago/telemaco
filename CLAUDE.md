@@ -40,12 +40,10 @@ cargo nextest run --release --features render -p <crate>
 cargo nextest run --release --features render --no-fail-fast
 ```
 
-The authoritative behavioral gate is the obstacle course in the companion repo
-`telemaco-benchmark` (33 stages, must stay 33/33):
-
-```bash
-TELEMACO_BIN=./target/release/telemaco python3 obstacle-course/run.py --runs 1 --warmup 0
-```
+The `telemaco-benchmark` companion repo that older docs cite as the
+authoritative gate **no longer exists**. In its place run the offline smoke
+battery in `GUIDA-AVVIO.md` section 9.1 (CLI, CDP, and MCP end to end against a
+local fixture) and, for rendering changes, `render-repros/run.sh`.
 
 Do not bulk-run `cargo fmt`: the tree is not rustfmt-clean. Match surrounding
 style in the files you edit.

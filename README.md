@@ -318,11 +318,13 @@ cargo nextest run --release --features render -p <crate>
 cargo nextest run --release --features render --no-fail-fast
 ```
 
-The behavioral gate is the obstacle course in the companion repo
-[telemaco-benchmark](https://github.com/AlbertoBarrago/telemaco-benchmark):
-33 capability and speed stages, expected 33/33. It serves local fixtures, so
-it is deterministic and offline. WPT conformance and the real-world render
-corpus live in the same repo.
+Beyond the unit suite there is an offline smoke battery covering the CLI, CDP,
+and MCP surfaces end to end against a local fixture; it lives in
+[GUIDA-AVVIO.md](GUIDA-AVVIO.md) section 9.1. Rendering changes additionally go
+through `render-repros/run.sh`, which draws 64 deterministic fixtures.
+
+Earlier revisions pointed at an obstacle course in a companion
+`telemaco-benchmark` repository. That repository no longer exists.
 
 ## Proxies for production
 

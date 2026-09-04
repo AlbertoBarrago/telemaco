@@ -410,15 +410,15 @@ cargo nextest run --release --features render --no-fail-fast
 cargo nextest run --release --features render -p telemaco-cli
 ```
 
-### 9.3 Obstacle course
+### 9.3 Obstacle course (non più disponibile)
 
-Il gate comportamentale è l'obstacle course nel repo companion
-`telemaco-benchmark` (33 stadi, attesi 33/33, tutto offline; il repo va
-clonato a parte):
+Il gate comportamentale era l'obstacle course nel repo companion
+`telemaco-benchmark`, 33 stadi da tenere a 33/33. **Quel repository non esiste
+più**, e al momento non c'è un singolo gate che lo sostituisca.
 
-```bash
-TELEMACO_BIN=./target/release/telemaco python3 obstacle-course/run.py --runs 1 --warmup 0
-```
+Al suo posto valgono la batteria di smoke test della sezione 9.1, che copre CLI,
+CDP e MCP end to end e gira offline, e `render-repros/run.sh` per le modifiche
+al rendering.
 
 ## 10. Problemi comuni
 
