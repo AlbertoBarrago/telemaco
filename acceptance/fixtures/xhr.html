@@ -1,0 +1,7 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>XHR</title></head>
+<body><p id="out">PENDING</p><script>
+var x = new XMLHttpRequest();
+x.onload = function(){ document.getElementById('out').textContent = 'XHR:' + JSON.parse(x.responseText).value; };
+x.onerror = function(){ document.getElementById('out').textContent = 'XHR-ERROR'; };
+x.open('GET', '/data.json'); x.send();
+</script></body></html>

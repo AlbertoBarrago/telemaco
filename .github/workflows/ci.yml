@@ -239,6 +239,7 @@ jobs:
           git worktree add --detach "$base_root" "$BASE_SHA"
           mkdir -p "$script_root"
           git show "$BASE_SHA:scripts/ci/perf_smoke.py" > "$script_root/perf_smoke.py"
+          git show "$BASE_SHA:scripts/ci/compare_acceptance.py" > "$script_root/compare_acceptance.py"
           # Run from the trusted worktree so a PR-supplied .cargo/config.toml in
           # the merge checkout cannot alter the compiler or wrapper for the base.
           (
@@ -251,8 +252,27 @@ jobs:
             "$RUNNER_TEMP/telemaco-ci/telemaco-base"
           chmod 0755 "$RUNNER_TEMP/telemaco-ci/telemaco-pr"
 
-      - name: Prepare results directory
-        run: mkdir -p "$RUNNER_TEMP/telemaco-ci-results"
+      - name: Run the acceptance gate for base and candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          results_root="$RUNNER_TEMP/telemaco-ci-results"
+          mkdir -p "$results_root"
+          # A failing stage is not an error here: the comparison decides, since
+          # only a stage that regressed against the base should block a PR.
+          set +e
+          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/telemaco-base" \
+            python3 acceptance/run.py --json --runs 3 --warmup 1 \
+              > "$results_root/acceptance-base.json"
+          base_status=$?
+          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/telemaco-pr" \
+            python3 acceptance/run.py --json --runs 3 --warmup 1 \
+              > "$results_root/acceptance-pr.json"
+          pr_status=$?
+          set -e
+          printf 'Acceptance exited base=%s candidate=%s\n' "$base_status" "$pr_status"
+          python3 -m json.tool "$results_root/acceptance-base.json" >/dev/null
+          python3 -m json.tool "$results_root/acceptance-pr.json" >/dev/null
 
       - name: Run interleaved latency and RSS smoke benchmark
         run: |
@@ -260,6 +280,12 @@ jobs:
             --base "$RUNNER_TEMP/telemaco-ci/telemaco-base" \
             --candidate "$RUNNER_TEMP/telemaco-ci/telemaco-pr" \
             --output "$RUNNER_TEMP/telemaco-ci-results/perf-smoke.json"
+
+      - name: Compare acceptance correctness and latency
+        run: |
+          python3 "$RUNNER_TEMP/telemaco-ci-scripts/compare_acceptance.py" \
+            --base "$RUNNER_TEMP/telemaco-ci-results/acceptance-base.json" \
+            --candidate "$RUNNER_TEMP/telemaco-ci-results/acceptance-pr.json"
 
       - name: Upload comparison evidence
         if: always()

@@ -1,0 +1,31 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Mutation</title></head>
+<body>
+<ul id="list"><li id="seed">seed</li></ul>
+<p id="out">PENDING</p>
+<script>
+(function(){
+  var list = document.getElementById('list');
+  var seed = document.getElementById('seed');
+
+  var b = document.createElement('li'); b.textContent = 'BEFORE';
+  seed.before(b);
+  var a = document.createElement('li'); a.textContent = 'AFTER';
+  seed.after(a);
+
+  var ins = document.createElement('li'); ins.textContent = 'INSERTED';
+  list.insertBefore(ins, a);
+
+  var rep = document.createElement('li'); rep.textContent = 'REPLACED';
+  list.replaceChild(rep, seed);
+
+  var last = document.createElement('li'); last.textContent = 'TOREPLACE';
+  list.appendChild(last);
+  var w = document.createElement('li'); w.textContent = 'REPLACEDWITH';
+  last.replaceWith(w);
+
+  // The order the nodes ended up in is the whole point: a swapped reference
+  // and parent argument still produces a list, just the wrong one.
+  var order = Array.prototype.map.call(list.children, function(n){ return n.textContent; }).join(',');
+  document.getElementById('out').textContent = 'ORDER:' + order;
+})();
+</script></body></html>

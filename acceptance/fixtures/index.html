@@ -1,0 +1,15 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Acceptance root</title></head>
+<body>
+<h1 id="title">Acceptance root</h1>
+<p>Static paragraph, ampersand &amp; and accent &eacute;.</p>
+<a href="/page2.html">Second page</a>
+<a href="https://example.invalid/external">External link</a>
+<script>
+  document.cookie = "acc_cookie=present; path=/";
+  try { localStorage.setItem("acc_key", "acc_value"); } catch (e) {}
+  var p = document.createElement('p');
+  p.id = 'injected';
+  p.textContent = 'INJECTED-BY-JS';
+  document.body.appendChild(p);
+</script>
+</body></html>

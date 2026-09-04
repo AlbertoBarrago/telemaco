@@ -1,0 +1,6 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Custom element</title></head>
+<body><acc-widget></acc-widget><script>
+customElements.define('acc-widget', class extends HTMLElement {
+  connectedCallback(){ this.textContent = 'CUSTOM-ELEMENT-UPGRADED'; }
+});
+</script></body></html>
