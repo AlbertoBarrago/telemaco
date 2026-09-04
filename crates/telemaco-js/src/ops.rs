@@ -4592,6 +4592,10 @@ fn op_canvas_paint_damage(state: &OpState, nid: u32) -> bool {
 }
 
 pub fn build_extension() -> Extension {
+    // `mut` is load-bearing under the render feature, where the block below
+    // pushes the rendering ops. A no-render build never reaches those pushes,
+    // so the compiler reports the binding as needlessly mutable there; dropping
+    // the `mut` to silence that warning breaks the render build instead.
     let mut ops = vec![
         op_dom(),
         op_script_mark_started(),
