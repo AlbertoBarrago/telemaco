@@ -10,7 +10,7 @@ CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features rend
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
 ```
 
-Expected result: **40/40**. The exit code is non-zero when any stage fails.
+Expected result: **41/41**. The exit code is non-zero when any stage fails.
 
 ## Why it exists
 
@@ -64,7 +64,7 @@ rather than the intended signal.
 | `state.` | 4 | cookies, `--storage-dir`, localStorage, the `--eval` IIFE workaround |
 | `security.` | 3 | the SSRF gate closed and open, robots.txt |
 | `render.` | 3 | screenshot, viewport height, PDF |
-| `protocol.` | 4 | the CDP endpoint, MCP tool list, MCP navigate and read, MCP fill and select |
+| `protocol.` | 5 | the CDP endpoint, MCP tool list, MCP navigate and read, MCP fill and select, stdio stream cleanliness |
 | `speed.` | 3 | static page, scripted page, parallel scrape |
 
 ## Characterization stages

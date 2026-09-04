@@ -474,6 +474,28 @@ def mcp_fill_form(u):
     return False
 
 
+def mcp_stdio_is_quiet_when_piped(u):
+    # A stdio server that prints anything on stdout corrupts the JSON-RPC
+    # stream, and noise on stderr confuses clients that surface it. When a
+    # client is attached (stdin is a pipe, not a terminal) both must stay clean.
+    # The terminal hint that explains the wait is deliberately not covered here:
+    # it needs a pty, and what matters for correctness is that it stays off.
+    proc = subprocess.run(
+        [BIN, "mcp"],
+        input=b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
+        capture_output=True, timeout=60, env=BASE_ENV,
+    )
+    if proc.stderr:
+        return False
+    for line in proc.stdout.decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if not line.startswith("{"):
+            return False  # non-JSON on stdout breaks the protocol
+    return True
+
+
 def speed_static_page(u):
     r = cli("fetch", f"{u}/page2.html", "-q", "--dump", "text")
     return "SECOND-PAGE-BODY" in r
@@ -528,6 +550,7 @@ STAGES: list[tuple[str, object]] = [
     ("protocol.mcp-tools-list", mcp_tools_list),
     ("protocol.mcp-navigate-read", mcp_navigate_and_read),
     ("protocol.mcp-fill-form", mcp_fill_form),
+    ("protocol.mcp-stdio-clean", mcp_stdio_is_quiet_when_piped),
     ("speed.static-page", speed_static_page),
     ("speed.scripted-page", speed_scripted_page),
     ("speed.parallel-scrape", speed_parallel_scrape),

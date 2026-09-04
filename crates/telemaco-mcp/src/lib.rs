@@ -257,6 +257,28 @@ pub async fn run(
     stealth: bool,
     limits: ExtractionLimits,
 ) -> Result<()> {
+    // A stdio MCP server reads JSON-RPC from stdin and answers on stdout, so
+    // with no client attached it correctly sits silent. Typed at a prompt that
+    // is indistinguishable from a hang, so say what is happening. stderr only:
+    // anything on stdout would corrupt the protocol stream, while clients
+    // ignore stderr.
+    if std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        eprintln!(
+            "telemaco mcp: MCP server on stdio, waiting for JSON-RPC on stdin.\n\
+             \n\
+             This command is meant to be launched by an MCP client, not run by hand.\n\
+             Point your client at it, for example Claude Code:\n\
+             \n\
+             \x20   claude mcp add telemaco -- telemaco mcp\n\
+             \n\
+             To try it here, pipe a request in:\n\
+             \n\
+             \x20   echo '{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}}' | telemaco mcp\n\
+             \n\
+             For an HTTP endpoint instead, use --http. Ctrl-C to quit."
+        );
+    }
+
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin);
