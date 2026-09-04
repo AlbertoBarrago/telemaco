@@ -3105,6 +3105,7 @@ dependencies = [
  "anyhow",
  "clap",
  "image",
+ "reqwest",
  "serde",
  "serde_json",
  "telemaco-browser",
