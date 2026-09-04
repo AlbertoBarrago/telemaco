@@ -18,6 +18,12 @@ acts as a drop-in replacement for headless Chrome with Puppeteer and
 Playwright. Rendering and stealth are first-class capabilities. It targets web
 scraping and AI agent automation.
 
+Telemaco is a derivative work of
+[Obscura](https://github.com/h4ckf0r0day/obscura) (Apache-2.0). It started as a
+fork and evolved into a distinct project with its own identity and a
+practical, scraping- and agent-oriented focus. See `NOTICE` for the full
+attribution.
+
 ## Why Telemaco over headless Chrome?
 
 | Metric       | Telemaco      | Headless Chrome |

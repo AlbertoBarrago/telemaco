@@ -1,0 +1,25 @@
+Telemaco
+Copyright (c) 2026 Alberto Barrago
+
+This product includes software developed as part of the Obscura project
+(https://github.com/h4ckf0r0day/obscura), which is licensed under the
+Apache License, Version 2.0. Telemaco is a derivative work of Obscura:
+the crate names, CLI surface, and project identity were changed, and the
+codebase has been adapted and extended for a practical, scraping- and
+agent-oriented development focus.
+
+The original Obscura project is distributed under the Apache License,
+Version 2.0. A copy of that license is included in this repository as
+LICENSE. The Apache License, Version 2.0, is also available at
+https://www.apache.org/licenses/LICENSE-2.0
+
+This product also incorporates third-party components under their own
+licenses, including but not limited to:
+  - Servo project components (html5ever, selectors, cssparser, servo_arc)
+  - taffy (layout engine)
+  - tiny-skia (2D rasterizer)
+  - ab_glyph (glyph rasterizer)
+  - deno_core / V8 (JavaScript runtime)
+  - chromiumoxide (Chrome DevTools Protocol client)
+See the individual crate manifests and the vendor/ directory for the
+applicable license texts.
