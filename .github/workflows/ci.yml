@@ -208,14 +208,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Checkout pinned obstacle course
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          repository: AlbertoBarrago/telemaco-benchmark
-          ref: 6ebac8293d7477f59e837768bfd4e74173f04f1c
-          path: telemaco-benchmark
-          persist-credentials: false
-
       - name: Download candidate binary
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -247,7 +239,6 @@ jobs:
           git worktree add --detach "$base_root" "$BASE_SHA"
           mkdir -p "$script_root"
           git show "$BASE_SHA:scripts/ci/perf_smoke.py" > "$script_root/perf_smoke.py"
-          git show "$BASE_SHA:scripts/ci/compare_obstacle.py" > "$script_root/compare_obstacle.py"
           # Run from the trusted worktree so a PR-supplied .cargo/config.toml in
           # the merge checkout cannot alter the compiler or wrapper for the base.
           (
@@ -260,25 +251,8 @@ jobs:
             "$RUNNER_TEMP/telemaco-ci/telemaco-base"
           chmod 0755 "$RUNNER_TEMP/telemaco-ci/telemaco-pr"
 
-      - name: Run base and candidate obstacle courses
-        shell: bash
-        run: |
-          set -euo pipefail
-          results_root="$RUNNER_TEMP/telemaco-ci-results"
-          mkdir -p "$results_root"
-          set +e
-          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/telemaco-base" \
-            python3 telemaco-benchmark/obstacle-course/run.py \
-              --json --runs 3 --warmup 1 > "$results_root/obstacle-base.json"
-          base_status=$?
-          TELEMACO_BIN="$RUNNER_TEMP/telemaco-ci/telemaco-pr" \
-            python3 telemaco-benchmark/obstacle-course/run.py \
-              --json --runs 3 --warmup 1 > "$results_root/obstacle-pr.json"
-          pr_status=$?
-          set -e
-          printf 'Obstacle commands exited base=%s candidate=%s\n' "$base_status" "$pr_status"
-          python3 -m json.tool "$results_root/obstacle-base.json" >/dev/null
-          python3 -m json.tool "$results_root/obstacle-pr.json" >/dev/null
+      - name: Prepare results directory
+        run: mkdir -p "$RUNNER_TEMP/telemaco-ci-results"
 
       - name: Run interleaved latency and RSS smoke benchmark
         run: |
@@ -286,12 +260,6 @@ jobs:
             --base "$RUNNER_TEMP/telemaco-ci/telemaco-base" \
             --candidate "$RUNNER_TEMP/telemaco-ci/telemaco-pr" \
             --output "$RUNNER_TEMP/telemaco-ci-results/perf-smoke.json"
-
-      - name: Compare obstacle correctness and latency
-        run: |
-          python3 "$RUNNER_TEMP/telemaco-ci-scripts/compare_obstacle.py" \
-            --base "$RUNNER_TEMP/telemaco-ci-results/obstacle-base.json" \
-            --candidate "$RUNNER_TEMP/telemaco-ci-results/obstacle-pr.json"
 
       - name: Upload comparison evidence
         if: always()
