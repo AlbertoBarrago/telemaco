@@ -536,7 +536,7 @@
       tab.classList.add('active');
       const id = tab.dataset.tab;
       document.getElementById('tab-' + id).classList.add('active');
-      document.getElementById('tab-label').textContent = id + '.js';
+      document.getElementById('tab-label').textContent = id === 'cli' ? 'terminal' : id + '.js';
     });
   });
 </script>
