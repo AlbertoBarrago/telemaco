@@ -178,12 +178,19 @@ fn cors_header(origin: Option<&str>, allowlist: Option<&str>) -> String {
 /// Connections are handled sequentially on the current thread — the browser
 /// session (including the V8 runtime) is single-threaded and `!Send`, so we
 /// never need to move state across threads.
-pub async fn run(host: String, port: u16, proxy: Option<String>, user_agent: Option<String>, stealth: bool) -> Result<()> {
+pub async fn run(
+    host: String,
+    port: u16,
+    proxy: Option<String>,
+    user_agent: Option<String>,
+    stealth: bool,
+    limits: crate::config::ExtractionLimits,
+) -> Result<()> {
     let addr: std::net::SocketAddr = format!("{}:{}", host, port).parse()?;
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!("MCP HTTP server on http://{}:{}/mcp", host, port);
 
-    let mut state = BrowserState::new(proxy, user_agent, stealth);
+    let mut state = BrowserState::new(proxy, user_agent, stealth, limits);
     let allowed_origins = allowed_origins_env();
 
     loop {

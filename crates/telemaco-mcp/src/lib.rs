@@ -3,6 +3,7 @@
 // limit (128) overflows. Bumping for this crate only.
 #![recursion_limit = "512"]
 
+pub mod config;
 pub mod http;
 
 use std::collections::HashMap;
@@ -14,14 +15,10 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use telemaco_browser::{BrowserContext, Page};
 use telemaco_dom::NodeId;
 use serde::{Deserialize, Serialize};
+
+use crate::config::ExtractionLimits;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-
-/// Cap on text returned to the agent unless the caller passes a larger
-/// `max_chars`. Agents waste context on multi-KB raw page dumps; this
-/// keeps a single tool call from burning a window's worth of tokens.
-/// Override via tool args.
-const DEFAULT_TEXT_LIMIT: usize = 4000;
 
 #[derive(Deserialize)]
 struct RpcMessage {
@@ -77,10 +74,19 @@ pub struct BrowserState {
     /// table is wiped on every navigation / tab switch and refilled on
     /// the next snapshot call.
     interactive_refs: HashMap<String, NodeId>,
+    /// Output caps for every tool that can emit unbounded text. Resolved once
+    /// at startup from config file, environment, and CLI flag; a tool argument
+    /// still overrides per call. See [`crate::config`].
+    limits: ExtractionLimits,
 }
 
 impl BrowserState {
-    pub fn new(proxy: Option<String>, user_agent: Option<String>, stealth: bool) -> Self {
+    pub fn new(
+        proxy: Option<String>,
+        user_agent: Option<String>,
+        stealth: bool,
+        limits: ExtractionLimits,
+    ) -> Self {
         BrowserState {
             tabs: std::collections::BTreeMap::new(),
             active_tab: None,
@@ -89,7 +95,13 @@ impl BrowserState {
             user_agent,
             console_messages: Vec::new(),
             interactive_refs: HashMap::new(),
+            limits,
         }
+    }
+
+    /// The resolved output caps for this server.
+    pub fn limits(&self) -> &ExtractionLimits {
+        &self.limits
     }
 
     /// Make sure there is at least one tab and return a &mut to the
@@ -224,7 +236,7 @@ pub(crate) async fn dispatch(method: &str, id: Value, params: &Value, state: &mu
     match method {
         "initialize" => handle_initialize(id, params),
         "ping" => RpcResponse::ok(id, json!({})),
-        "tools/list" => handle_tools_list(id),
+        "tools/list" => handle_tools_list(id, state.limits()),
         "tools/call" => handle_tool_call(id, params, state).await,
         "resources/list" => RpcResponse::ok(id, json!({"resources": []})),
         "prompts/list" => RpcResponse::ok(id, json!({"prompts": []})),
@@ -232,13 +244,18 @@ pub(crate) async fn dispatch(method: &str, id: Value, params: &Value, state: &mu
     }
 }
 
-pub async fn run(proxy: Option<String>, user_agent: Option<String>, stealth: bool) -> Result<()> {
+pub async fn run(
+    proxy: Option<String>,
+    user_agent: Option<String>,
+    stealth: bool,
+    limits: ExtractionLimits,
+) -> Result<()> {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin);
     let mut writer = stdout;
 
-    let mut state = BrowserState::new(proxy, user_agent, stealth);
+    let mut state = BrowserState::new(proxy, user_agent, stealth, limits);
     let mut runtime_pump_armed = false;
 
     loop {
@@ -309,7 +326,26 @@ fn handle_initialize(id: Value, params: &Value) -> RpcResponse {
     }))
 }
 
-fn handle_tools_list(id: Value) -> RpcResponse {
+/// Advertise the tool schemas.
+///
+/// The per-tool default shown in each description is the RESOLVED value for
+/// this server, not a hardcoded literal: once the caps became configurable, a
+/// fixed string in the schema would misreport the server's own behavior to the
+/// client.
+fn handle_tools_list(id: Value, limits: &ExtractionLimits) -> RpcResponse {
+    // `0` means unlimited; say so rather than printing the sentinel.
+    let shown = |value: usize| -> String {
+        if value == 0 {
+            "unlimited".to_string()
+        } else {
+            value.to_string()
+        }
+    };
+    let max_chars = shown(limits.max_chars);
+    let max_links = shown(limits.max_links);
+    let max_interactive = shown(limits.max_interactive);
+    let max_search_results = shown(limits.max_search_results);
+    let search_context_chars = shown(limits.search_context_chars);
     #[allow(unused_mut)]
     let mut tools = json!([
             {
@@ -334,7 +370,7 @@ fn handle_tools_list(id: Value) -> RpcResponse {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "max_chars": { "type": "number", "minimum": 0, "description": "Truncate readable body text to this many characters (default: 4000)" }
+                        "max_chars": { "type": "number", "minimum": 0, "description": format!("Truncate readable body text to this many characters (default: {max_chars})") }
                     },
                     "additionalProperties": false
                 }
@@ -453,7 +489,7 @@ fn handle_tools_list(id: Value) -> RpcResponse {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "max_chars": { "type": "number", "description": "Truncate to this many characters (default 4000)" }
+                        "max_chars": { "type": "number", "description": format!("Truncate to this many characters (default {max_chars})") }
                     }
                 }
             },
@@ -463,7 +499,7 @@ fn handle_tools_list(id: Value) -> RpcResponse {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "limit": { "type": "number", "description": "Max number of links to return (default 100)" },
+                        "limit": { "type": "number", "description": format!("Max number of links to return (default {max_links})") },
                         "internal_only": { "type": "boolean", "description": "If true, only return links on the same origin as the current page" }
                     }
                 }
@@ -474,7 +510,7 @@ fn handle_tools_list(id: Value) -> RpcResponse {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "limit": { "type": "number", "description": "Max number of elements (default 100)" }
+                        "limit": { "type": "number", "description": format!("Max number of elements (default {max_interactive})") }
                     }
                 }
             },
@@ -660,8 +696,8 @@ fn handle_tools_list(id: Value) -> RpcResponse {
                     "properties": {
                         "query": { "type": "string" },
                         "case_sensitive": { "type": "boolean" },
-                        "limit": { "type": "number", "description": "Max matches to return (default 10)" },
-                        "context_chars": { "type": "number", "description": "Chars on each side of the match (default 80)" }
+                        "limit": { "type": "number", "description": format!("Max matches to return (default {max_search_results})") },
+                        "context_chars": { "type": "number", "description": format!("Chars on each side of the match (default {search_context_chars})") }
                     },
                     "required": ["query"]
                 }
@@ -916,9 +952,25 @@ fn resolve_target(args: &Value, state: &BrowserState) -> Result<String, String> 
     Err("Missing 'ref' or 'selector' parameter".to_string())
 }
 
+/// Marker appended when a list result was capped.
+///
+/// A capped result must never look like a complete one. This is the same
+/// failure the empty-`browser_markdown` case exposed: output that carries no
+/// statement about its own completeness sends the agent chasing a phantom.
+fn omitted_note(shown: usize, total: usize) -> String {
+    if total <= shown {
+        return String::new();
+    }
+    format!(
+        "\n...({} of {total} omitted; raise the cap via config or the tool's limit argument)",
+        total - shown
+    )
+}
+
 /// Clamp text to `max_chars` and tack on a `...(truncated, N more chars)`
-/// marker so the agent can ask for more if needed. Default ceiling is
-/// 4 KiB to prevent a single tool call from consuming a window of context.
+/// marker so the agent can ask for more if needed. The ceiling is configurable
+/// (see [`crate::config`]) to keep a single tool call from consuming a window
+/// of context.
 fn truncate(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();
@@ -950,8 +1002,10 @@ async fn tool_navigate(args: &Value, state: &mut BrowserState) -> Result<String,
 }
 
 fn tool_snapshot(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let max_chars = args.get("max_chars").and_then(Value::as_u64).map(|n| n as usize)
-        .unwrap_or(DEFAULT_TEXT_LIMIT);
+    let max_chars = ExtractionLimits::override_with(
+        state.limits.max_chars,
+        args.get("max_chars").and_then(Value::as_u64),
+    );
     rebuild_interactive_refs(state)?;
     let page = state.page_mut();
     let url = page.url_string();
@@ -1161,6 +1215,7 @@ async fn tool_wait_for(args: &Value, state: &mut BrowserState) -> Result<String,
 }
 
 fn tool_network_requests(state: &mut BrowserState) -> Result<String, String> {
+    let limit = ExtractionLimits::cap(state.limits.max_network_requests);
     let page = state.page_mut();
     let events = &page.network_events;
 
@@ -1168,19 +1223,23 @@ fn tool_network_requests(state: &mut BrowserState) -> Result<String, String> {
         return Ok("No network requests recorded.".to_string());
     }
 
-    let lines: Vec<String> = events.iter().map(|e| {
+    let total = events.len();
+    let lines: Vec<String> = events.iter().take(limit).map(|e| {
         format!("[{}] {} {} ({}B)", e.status, e.method, e.url, e.body_size)
     }).collect();
+    let shown = lines.len();
 
-    Ok(lines.join("\n"))
+    Ok(format!("{}{}", lines.join("\n"), omitted_note(shown, total)))
 }
 
 fn tool_console_messages(state: &BrowserState) -> Result<String, String> {
     if state.console_messages.is_empty() {
-        Ok("No console messages.".to_string())
-    } else {
-        Ok(state.console_messages.join("\n"))
+        return Ok("No console messages.".to_string());
     }
+    let limit = ExtractionLimits::cap(state.limits.max_console_messages);
+    let total = state.console_messages.len();
+    let shown: Vec<&str> = state.console_messages.iter().take(limit).map(String::as_str).collect();
+    Ok(format!("{}{}", shown.join("\n"), omitted_note(shown.len(), total)))
 }
 
 fn tool_close(state: &mut BrowserState) -> Result<String, String> {
@@ -1203,8 +1262,10 @@ fn tool_close(state: &mut BrowserState) -> Result<String, String> {
 /// already used by `telemaco fetch --dump markdown`. More token-dense than
 /// browser_snapshot for content-heavy pages (article bodies, docs sites).
 fn tool_markdown(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let max_chars = args.get("max_chars").and_then(Value::as_u64).map(|n| n as usize)
-        .unwrap_or(DEFAULT_TEXT_LIMIT);
+    let max_chars = ExtractionLimits::override_with(
+        state.limits.max_chars,
+        args.get("max_chars").and_then(Value::as_u64),
+    );
     let page = state.page_mut();
     let result = page.evaluate(telemaco_browser::HTML_TO_MARKDOWN_JS);
     let md = result.as_str().unwrap_or_default();
@@ -1214,7 +1275,10 @@ fn tool_markdown(args: &Value, state: &mut BrowserState) -> Result<String, Strin
 /// Enumerate every `<a href>` on the page. One JSON object per line so
 /// the agent can grep / split without round-tripping to a JSON parser.
 fn tool_links(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize;
+    let limit = ExtractionLimits::override_with(
+        state.limits.max_links,
+        args.get("limit").and_then(Value::as_u64),
+    );
     let internal_only = args.get("internal_only").and_then(Value::as_bool).unwrap_or(false);
     let page = state.page_mut();
     let base_origin = url::Url::parse(&page.url_string())
@@ -1262,7 +1326,18 @@ fn tool_links(args: &Value, state: &mut BrowserState) -> Result<String, String> 
 /// type instead of crafting selectors. Also assigns `data-telemaco-ref`
 /// to each element so the ref survives until the next navigation.
 fn tool_interactive_elements(args: &Value, state: &mut BrowserState) -> Result<String, String> {
-    let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(100) as usize;
+    let limit = ExtractionLimits::override_with(
+        state.limits.max_interactive,
+        args.get("limit").and_then(Value::as_u64),
+    );
+    // The limit is interpolated into the JS below, so an unlimited cap must not
+    // emit usize::MAX as a literal: JS would widen it to a float anyway, and the
+    // intent reads better spelled out.
+    let limit = if limit == usize::MAX {
+        "Number.MAX_SAFE_INTEGER".to_string()
+    } else {
+        limit.to_string()
+    };
     rebuild_interactive_refs(state)?;
     if state.interactive_refs.is_empty() {
         return Ok("No interactive elements on this page.".to_string());
@@ -1477,6 +1552,7 @@ async fn tool_wait_for_text(args: &Value, state: &mut BrowserState) -> Result<St
 /// current value, and any visible label text. Agents call this to
 /// understand a form's shape before filling it.
 fn tool_detect_forms(state: &mut BrowserState) -> Result<String, String> {
+    let limit = ExtractionLimits::cap(state.limits.max_forms);
     let page = state.page_mut();
     let js = r#"(function(){
         var forms = document.querySelectorAll('form');
@@ -1532,7 +1608,22 @@ fn tool_detect_forms(state: &mut BrowserState) -> Result<String, String> {
     if val.is_null() {
         return Ok("No forms found.".to_string());
     }
-    serde_json::to_string_pretty(&val).map_err(|e| e.to_string())
+
+    // Cap on the Rust side rather than inside the JS: the script above is a raw
+    // string literal, and threading a limit through it would mean escaping every
+    // brace in it for `format!`.
+    let (val, total) = match val.as_array() {
+        Some(forms) => {
+            let total = forms.len();
+            let kept: Vec<Value> = forms.iter().take(limit).cloned().collect();
+            (Value::Array(kept), total)
+        }
+        None => (val, 0),
+    };
+    let shown = val.as_array().map(Vec::len).unwrap_or(0);
+
+    let body = serde_json::to_string_pretty(&val).map_err(|e| e.to_string())?;
+    Ok(format!("{body}{}", omitted_note(shown, total)))
 }
 
 /// Fill multiple fields in one call. Each entry: {ref|selector, value, type?}.
@@ -1887,8 +1978,14 @@ fn tool_search(args: &Value, state: &mut BrowserState) -> Result<String, String>
     let query = args.get("query").and_then(Value::as_str)
         .ok_or("Missing query parameter")?;
     let case_sensitive = args.get("case_sensitive").and_then(Value::as_bool).unwrap_or(false);
-    let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(10) as usize;
-    let context = args.get("context_chars").and_then(Value::as_u64).unwrap_or(80) as usize;
+    let limit = ExtractionLimits::override_with(
+        state.limits.max_search_results,
+        args.get("limit").and_then(Value::as_u64),
+    );
+    let context = ExtractionLimits::override_with(
+        state.limits.search_context_chars,
+        args.get("context_chars").and_then(Value::as_u64),
+    );
 
     let page = state.page_mut();
     let body = page.with_dom(|dom| {
@@ -2036,8 +2133,76 @@ mod tests {
     use super::*;
 
     fn listed_tools() -> Vec<Value> {
-        handle_tools_list(json!(1)).result.expect("tools/list result")
+        listed_tools_with(&ExtractionLimits::default())
+    }
+
+    fn listed_tools_with(limits: &ExtractionLimits) -> Vec<Value> {
+        handle_tools_list(json!(1), limits).result.expect("tools/list result")
             .get("tools").and_then(Value::as_array).cloned().expect("tools array")
+    }
+
+    /// Helper: the description string of one property on one tool's schema.
+    fn property_description(tools: &[Value], tool: &str, property: &str) -> String {
+        tools
+            .iter()
+            .find(|t| t.get("name").and_then(Value::as_str) == Some(tool))
+            .unwrap_or_else(|| panic!("tool {tool} not advertised"))
+            .pointer(&format!("/inputSchema/properties/{property}/description"))
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("{tool}.{property} has no description"))
+            .to_string()
+    }
+
+    #[test]
+    fn advertised_defaults_follow_the_configured_limits() {
+        let limits = ExtractionLimits { max_chars: 25_000, max_links: 7, ..Default::default() };
+        let tools = listed_tools_with(&limits);
+
+        assert!(
+            property_description(&tools, "browser_markdown", "max_chars").contains("25000"),
+            "markdown schema must advertise the configured cap, not a hardcoded one"
+        );
+        assert!(
+            property_description(&tools, "browser_links", "limit").contains('7'),
+            "links schema must advertise the configured cap"
+        );
+    }
+
+    #[test]
+    fn advertised_default_says_unlimited_for_zero() {
+        let limits = ExtractionLimits { max_chars: 0, ..Default::default() };
+        let tools = listed_tools_with(&limits);
+        let described = property_description(&tools, "browser_markdown", "max_chars");
+        assert!(
+            described.contains("unlimited"),
+            "0 is the unlimited sentinel and must not leak into the schema, got: {described}"
+        );
+    }
+
+    #[test]
+    fn default_limits_still_advertise_the_historical_values() {
+        // Guards the inert-by-default promise: with no config, clients see
+        // exactly what they saw before the limits became configurable.
+        let tools = listed_tools();
+        assert!(property_description(&tools, "browser_markdown", "max_chars").contains("4000"));
+        assert!(property_description(&tools, "browser_links", "limit").contains("100"));
+    }
+
+    #[test]
+    fn omitted_note_is_silent_when_nothing_was_cut() {
+        assert_eq!(omitted_note(10, 10), "");
+        assert_eq!(omitted_note(10, 3), "");
+    }
+
+    #[test]
+    fn omitted_note_reports_the_shortfall_and_the_total() {
+        let note = omitted_note(2, 7);
+        assert!(note.contains('5'), "should say how many were dropped: {note}");
+        assert!(note.contains('7'), "should say the total: {note}");
+        assert!(
+            note.contains("raise the cap"),
+            "should tell the agent how to get the rest: {note}"
+        );
     }
 
     #[test]
@@ -2080,7 +2245,7 @@ mod tests {
     #[cfg(feature = "render")]
     #[tokio::test(flavor = "current_thread")]
     async fn render_tool_calls_return_mcp_binary_content_and_reject_bad_options() {
-        let mut state = BrowserState::new(None, None, false);
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
         state.page_mut().navigate(
             "data:text/html,<html style='margin:0'><body style='margin:0;background:red'><div style='width:64px;height:48px'></div></body></html>",
         ).await.expect("render test page should navigate");
@@ -2175,7 +2340,7 @@ mod tests {
         // --allow-private-network to run their repro.
         std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
         let (base, requests) = spawn_form_recording_server();
-        let mut state = BrowserState::new(None, None, false);
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
         state
             .page_mut()
             .navigate(&base)
@@ -2210,7 +2375,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn fill_tools_notify_controlled_input_tracker() {
-        let mut state = BrowserState::new(None, None, false);
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
         state
             .page_mut()
             .navigate("data:text/html,<div id=root><input id=field></div>")
@@ -2285,7 +2450,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn fill_form_check_and_select_use_native_setter_and_trusted_events() {
-        let mut state = BrowserState::new(None, None, false);
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
         state
             .page_mut()
             .navigate(

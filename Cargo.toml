@@ -46,6 +46,10 @@ tokio-tungstenite = "0.26"
 reqwest = { version = "0.12", features = ["gzip", "brotli", "deflate", "rustls-tls", "socks"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Config-file format for the MCP extraction limits. TOML so the file can carry
+# comments explaining why a limit was raised; serde_json is already present but
+# JSON cannot.
+toml = { version = "0.9", default-features = false, features = ["parse", "serde"] }
 url = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

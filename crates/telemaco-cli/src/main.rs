@@ -51,6 +51,13 @@ struct Args {
     #[arg(long, global = true)]
     allow_private_network: bool,
 
+    /// Path to a TOML config file. Without it, `./telemaco.toml` then
+    /// `~/.config/telemaco/config.toml` are tried, and their absence just means
+    /// built-in defaults. A path given here MUST exist: naming a file that is
+    /// not there is an error, not a silent fallback.
+    #[arg(long, global = true, value_name = "PATH")]
+    config: Option<std::path::PathBuf>,
+
     /// Pass raw flags to V8, in the same form V8/Chromium/Node accept
     /// (e.g. `"--max-old-space-size=4096 --max-semi-space-size=64 --expose-gc"`).
     /// Applied once at startup before any isolate is created.
@@ -185,6 +192,12 @@ enum Command {
     Mcp {
         #[arg(long)]
         http: bool,
+
+        /// Override the configured character cap for page-text extraction
+        /// (`browser_markdown`, `browser_snapshot`). Highest-precedence layer
+        /// below a per-call tool argument. `0` means unlimited.
+        #[arg(long, value_name = "N")]
+        max_chars: Option<usize>,
 
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
@@ -512,12 +525,19 @@ async fn main() -> anyhow::Result<()> {
             port,
             proxy,
             user_agent,
+            max_chars,
         }) => {
             let mcp_proxy = merge_proxy(global_proxy.clone(), proxy);
+            // Config file and environment resolve first; the CLI flag is the
+            // last layer before a per-call tool argument.
+            let mut limits = telemaco_mcp::config::load(args.config.as_deref())?;
+            if let Some(max_chars) = max_chars {
+                limits.max_chars = max_chars;
+            }
             if http {
-                telemaco_mcp::http::run(host, port, mcp_proxy, user_agent, stealth).await?;
+                telemaco_mcp::http::run(host, port, mcp_proxy, user_agent, stealth, limits).await?;
             } else {
-                telemaco_mcp::run(mcp_proxy, user_agent, stealth).await?;
+                telemaco_mcp::run(mcp_proxy, user_agent, stealth, limits).await?;
             }
         }
         None => {
