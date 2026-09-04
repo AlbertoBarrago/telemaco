@@ -82,12 +82,28 @@ async fn latest_release_tag(client: &reqwest::Client) -> Result<String> {
 }
 
 /// Where the running binary lives, and where its worker should sit.
-fn install_paths() -> Result<(PathBuf, PathBuf)> {
-    let exe = std::env::current_exe().context("locating the running binary")?;
-    let exe = exe.canonicalize().unwrap_or(exe);
+///
+/// Returns the resolved path alongside the one the user invoked, because a
+/// symlink means those differ and the difference is worth stating before
+/// anything is replaced.
+fn install_paths() -> Result<(PathBuf, PathBuf, PathBuf)> {
+    let invoked = std::env::current_exe().context("locating the running binary")?;
+    let exe = invoked.canonicalize().unwrap_or_else(|_| invoked.clone());
     let dir = exe.parent().context("the binary has no parent directory")?.to_path_buf();
     let worker = dir.join(if cfg!(windows) { "telemaco-worker.exe" } else { "telemaco-worker" });
-    Ok((exe, worker))
+    Ok((exe, worker, invoked))
+}
+
+/// Is this path inside a cargo build directory?
+///
+/// A `target` directory whose parent holds a `Cargo.toml` is unambiguously
+/// build output, which matching the bare string "target" anywhere in the path
+/// is not: someone may reasonably install into a directory of that name.
+fn is_cargo_build_output(path: &Path) -> bool {
+    path.ancestors().any(|ancestor| {
+        ancestor.file_name().is_some_and(|name| name == "target")
+            && ancestor.parent().is_some_and(|p| p.join("Cargo.toml").is_file())
+    })
 }
 
 /// Refuse rather than half-succeed: a partially replaced install is worse than
@@ -139,7 +155,24 @@ pub async fn run(check_only: bool, force: bool) -> Result<()> {
         );
     }
 
-    let (exe, worker) = install_paths()?;
+    let (exe, worker, invoked) = install_paths()?;
+
+    // Replacing cargo's output would leave a downloaded binary sitting in a
+    // build directory, where the next `cargo build` silently reverts it and
+    // anyone debugging in between wonders why their changes are missing.
+    // Common enough: a symlink from ~/.local/bin into a checkout.
+    if is_cargo_build_output(&exe) {
+        bail!(
+            "{} is cargo build output, not an installation.\n\
+             Run `cargo build --release` to update it, or install a release \
+             elsewhere and update that.",
+            exe.display()
+        );
+    }
+
+    if exe != invoked {
+        println!("  {} resolves to {}", invoked.display(), exe.display());
+    }
     check_writable(&exe)?;
 
     let asset = asset_name()?;
@@ -318,6 +351,29 @@ mod tests {
     fn prerelease_suffixes_do_not_break_the_patch_number() {
         assert_eq!(parse_version("0.1.2-rc1"), (0, 1, 2));
         assert_eq!(parse_version("0.1.2+build7"), (0, 1, 2));
+    }
+
+    #[test]
+    fn a_cargo_target_directory_is_recognised_only_next_to_a_manifest() {
+        let root = std::env::temp_dir().join("telemaco-update-guard-test");
+        let _ = std::fs::remove_dir_all(&root);
+
+        // A real cargo layout: Cargo.toml beside target/.
+        let crate_dir = root.join("checkout");
+        std::fs::create_dir_all(crate_dir.join("target/release")).unwrap();
+        std::fs::write(crate_dir.join("Cargo.toml"), b"[package]").unwrap();
+        assert!(is_cargo_build_output(&crate_dir.join("target/release/telemaco")));
+
+        // A directory that merely happens to be called target is not one, or
+        // anyone installing into ~/target could never update.
+        let innocent = root.join("home/target");
+        std::fs::create_dir_all(&innocent).unwrap();
+        assert!(!is_cargo_build_output(&innocent.join("telemaco")));
+
+        // And an ordinary install location is untouched by the check.
+        assert!(!is_cargo_build_output(Path::new("/usr/local/bin/telemaco")));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

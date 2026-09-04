@@ -101,6 +101,12 @@ scripts, CI, and MCP clients: a browser people reach for to avoid leaving
 traces should not contact GitHub on its own. `TELEMACO_NO_UPDATE_CHECK=1`
 switches the check off entirely.
 
+`update` refuses when the binary it would replace turns out to be cargo build
+output, which happens when `~/.local/bin/telemaco` is a symlink into a
+checkout: replacing it would drop a downloaded binary into a build directory,
+where the next `cargo build` silently reverts it. A directory named `target` is
+only treated as build output when a `Cargo.toml` sits beside it.
+
 Self-update is not available on Windows yet; a running `.exe` cannot be
 replaced in place, so the command says so instead of half-finishing.
 
@@ -135,7 +141,7 @@ docker pull albz222/telemaco:latest
 docker run -d --name telemaco -p 127.0.0.1:9222:9222 albz222/telemaco:latest
 ```
 
-Images are tagged by version (`albz222/telemaco:0.1.2`) as well as `latest`,
+Images are tagged by version (`albz222/telemaco:0.1.3`) as well as `latest`,
 and built for `linux/amd64` and `linux/arm64`. The container runs the CDP
 server on port 9222 by default, so Puppeteer and Playwright can connect to
 `ws://127.0.0.1:9222` straight away.

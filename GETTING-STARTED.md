@@ -75,6 +75,12 @@ scripts, CI, and MCP clients: a browser people reach for to avoid leaving
 traces should not contact GitHub on its own. `TELEMACO_NO_UPDATE_CHECK=1`
 switches the check off entirely.
 
+`update` refuses when the binary it would replace turns out to be cargo build
+output, which happens when `~/.local/bin/telemaco` is a symlink into a
+checkout: replacing it would drop a downloaded binary into a build directory,
+where the next `cargo build` silently reverts it. A directory named `target` is
+only treated as build output when a `Cargo.toml` sits beside it.
+
 Self-update is not available on Windows yet; a running `.exe` cannot be
 replaced in place, so the command says so instead of half-finishing.
 
@@ -304,7 +310,7 @@ Claude Desktop configuration:
 }
 ```
 
-Tools available, 37 as of 0.1.2: `browser_navigate`, `browser_snapshot`,
+Tools available, 37 as of 0.1.3: `browser_navigate`, `browser_snapshot`,
 `browser_interactive_elements`, `browser_click`, `browser_fill`,
 `browser_fill_form`, `browser_detect_forms`, `browser_type`,
 `browser_press_key`, `browser_select_option`, `browser_evaluate`,
