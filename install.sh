@@ -82,10 +82,48 @@ install_from_source() {
 install_from_release() {
   # Returns non-zero when no published release carries our asset, so the caller
   # can fall back to a source build instead of failing outright.
-  local url="https://github.com/$REPO/releases/latest/download/$ASSET"
+  #
+  # Three ways in, because the obvious one does not always work: the public
+  # /releases/latest/download/ URL 404s on a PRIVATE repository even with a
+  # token, so a private checkout needs the gh CLI or the API asset endpoint.
   local tmp; tmp="$(mktemp -d)"
-  curl -fsSL --retry 2 -o "$tmp/$ASSET" "$url" 2>/dev/null || { rm -rf "$tmp"; return 1; }
-  tar xzf "$tmp/$ASSET" -C "$tmp" || { rm -rf "$tmp"; return 1; }
+  local got=1
+
+  if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
+    if gh release download --repo "$REPO" --pattern "$ASSET" --dir "$tmp" --clobber >/dev/null 2>&1; then
+      got=0
+    fi
+  fi
+
+  if [[ $got -ne 0 ]]; then
+    local token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+    if [[ -n "$token" ]]; then
+      local id
+      id="$(curl -fsSL -H "Authorization: Bearer $token" \
+              "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+            | python3 -c "import json,sys
+try: r = json.load(sys.stdin)
+except Exception: sys.exit(0)
+for a in r.get('assets', []):
+    if a['name'] == '$ASSET':
+        print(a['id']); break" 2>/dev/null)"
+      if [[ -n "$id" ]] && curl -fsSL -o "$tmp/$ASSET" \
+           -H "Authorization: Bearer $token" -H "Accept: application/octet-stream" \
+           "https://api.github.com/repos/$REPO/releases/assets/$id" 2>/dev/null; then
+        got=0
+      fi
+    fi
+  fi
+
+  if [[ $got -ne 0 ]]; then
+    curl -fsSL --retry 2 -o "$tmp/$ASSET" \
+      "https://github.com/$REPO/releases/latest/download/$ASSET" 2>/dev/null && got=0
+  fi
+
+  if [[ $got -ne 0 ]] || ! tar xzf "$tmp/$ASSET" -C "$tmp" 2>/dev/null; then
+    rm -rf "$tmp"; return 1
+  fi
+
   mkdir -p "$PREFIX"
   install -m 0755 "$tmp/telemaco" "$PREFIX/telemaco"
   [[ -f "$tmp/telemaco-worker" ]] && install -m 0755 "$tmp/telemaco-worker" "$PREFIX/telemaco-worker"
