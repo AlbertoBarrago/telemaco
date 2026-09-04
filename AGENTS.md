@@ -48,26 +48,24 @@ cargo nextest run --release --features render --no-fail-fast
 single V8 isolate per process, so the runtime tests fail under it. `nextest`
 runs each test in its own process, which is the only supported way.
 
-### The obstacle course is gone
+The authoritative behavioral gate is the **acceptance suite** in
+`acceptance/`, 40 stages that must stay at 40/40:
 
-Earlier revisions of this file named an **obstacle course** (33 stages, kept at
-33/33) in a companion repo `telemaco-benchmark`, along with a WPT run and a
-real-world render corpus. **That repository no longer exists.** Do not go
-looking for it, and do not treat a green run of anything else as a substitute
-for it: there is currently no single authoritative behavioral gate.
+```bash
+TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
+```
 
-What remains, and what to run in its place:
+It serves its own fixtures on a port chosen at runtime, so it is deterministic,
+offline, and safe to run concurrently. `--json` emits the contract
+`scripts/ci/compare_acceptance.py` consumes to fail a pull request that
+regresses a stage the base revision passed.
 
-| Gate | What it covers |
-|------|----------------|
-| `cargo nextest run --release --features render --no-fail-fast` | the whole unit and integration suite |
-| The smoke battery in `GUIDA-AVVIO.md` section 9.1 | CLI, CDP, and MCP end to end against a local fixture, fully offline |
-| `render-repros/run.sh` | 64 rendering fixtures, see the rendering section below |
+Stage names are part of that contract: renaming one makes the comparison report
+a missing stage rather than a regression. See `acceptance/README.md`.
 
-The smoke battery starts its own fixture HTTP server on a fixed port. If a
-stale server already holds that port the requests reach the wrong process and
-most checks fail for a reason that has nothing to do with the code, so check
-the port before trusting a red run.
+An earlier companion repo `telemaco-benchmark` held a 33-stage version of this.
+That repository no longer exists and the stage list did not survive it, so the
+suite here was written fresh rather than restored.
 
 ## Before you finish
 
@@ -76,9 +74,7 @@ For any code change:
 1. Run focused release-mode nextest coverage for the crates and repro involved.
 2. Run `cargo nextest run --release --features render --no-fail-fast`.
 3. Run the exact release build shown above.
-4. Run the offline smoke battery in `GUIDA-AVVIO.md` section 9.1. It exercises
-   the CLI, CDP, and MCP surfaces against a local fixture, which the unit suite
-   does not.
+4. The acceptance suite still reports **40/40**.
 5. For render changes, run deterministic fixtures and broad top/bottom real-site
    captures using the methodology below.
 6. For stealth changes, re-test with `--stealth` (a non-stealth binary won't

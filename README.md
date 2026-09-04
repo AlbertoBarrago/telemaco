@@ -318,13 +318,16 @@ cargo nextest run --release --features render -p <crate>
 cargo nextest run --release --features render --no-fail-fast
 ```
 
-Beyond the unit suite there is an offline smoke battery covering the CLI, CDP,
-and MCP surfaces end to end against a local fixture; it lives in
-[GUIDA-AVVIO.md](GUIDA-AVVIO.md) section 9.1. Rendering changes additionally go
-through `render-repros/run.sh`, which draws 64 deterministic fixtures.
+The behavioral gate is the acceptance suite in
+[`acceptance/`](acceptance/README.md), 40 stages that must stay at 40/40:
 
-Earlier revisions pointed at an obstacle course in a companion
-`telemaco-benchmark` repository. That repository no longer exists.
+```bash
+TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
+```
+
+It serves its own fixtures on a port picked at runtime, so it is deterministic,
+offline, and cannot collide with a server already running. Rendering changes
+additionally go through `render-repros/run.sh`, which draws 64 fixtures.
 
 ## Proxies for production
 
