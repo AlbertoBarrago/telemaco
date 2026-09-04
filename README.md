@@ -57,6 +57,30 @@ framework pages, with the same CDP automation surface.
 
 ## Install
 
+### Installer script
+
+Downloads the right release archive for this machine, then offers to register
+telemaco as an MCP server with the AI agents it finds:
+
+```bash
+git clone https://github.com/AlbertoBarrago/telemaco.git && cd telemaco
+./install.sh
+```
+
+It asks before touching anything, one agent at a time, and backs up every
+config it edits. `--yes` accepts the defaults and registers nothing; `--prefix`
+installs somewhere other than `~/.local/bin`; `--from-source` builds locally
+instead of downloading.
+
+Claude Code is registered through `claude mcp add`, its own CLI. Claude
+Desktop, Cursor, and Windsurf are merged into their JSON config, leaving other
+servers and unrelated keys untouched; a config that does not parse is left
+alone rather than rewritten. Zed only gets a printed snippet, because its
+settings file accepts comments and rewriting it as strict JSON would delete
+them.
+
+Re-running changes nothing once telemaco is registered.
+
 ### Prebuilt binaries
 
 Grab the latest archive from
@@ -80,6 +104,27 @@ the same directory for the parallel `scrape` command.
 | `-no-render-stealth`  | No        | Yes               |
 
 ### Docker
+
+Pull the published image:
+
+```bash
+docker pull albz222/telemaco:latest
+docker run -d --name telemaco -p 127.0.0.1:9222:9222 albz222/telemaco:latest
+```
+
+Images are tagged by version (`albz222/telemaco:0.1.1`) as well as `latest`,
+and built for `linux/amd64` and `linux/arm64`. The container runs the CDP
+server on port 9222 by default, so Puppeteer and Playwright can connect to
+`ws://127.0.0.1:9222` straight away.
+
+Run a one-off command instead of the server by overriding the entrypoint:
+
+```bash
+docker run --rm --entrypoint /telemaco albz222/telemaco:latest \
+  fetch https://example.com --dump markdown
+```
+
+Or build it yourself from a checkout:
 
 ```bash
 docker build -t telemaco .
@@ -325,7 +370,7 @@ cargo nextest run --release --features render --no-fail-fast
 ```
 
 The behavioral gate is the acceptance suite in
-[`acceptance/`](acceptance/README.md), 40 stages that must stay at 40/40:
+[`acceptance/`](acceptance/README.md), 41 stages that must stay at 41/41:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py

@@ -78,7 +78,7 @@ single V8 isolate per process, so the runtime tests fail under it. `nextest`
 runs each test in its own process, which is the only supported way.
 
 The authoritative behavioral gate is the **acceptance suite** in
-[`acceptance/`](acceptance/README.md), 40 stages that must stay at 40/40:
+[`acceptance/`](acceptance/README.md), 41 stages that must stay at 41/41:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -139,7 +139,7 @@ For any code change:
 1. `cargo nextest run --release --features render` passes for the crates you touched.
 2. The full render-feature nextest command above passes.
 3. `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --release -p telemaco-cli --bins --features render` compiles clean.
-4. The acceptance suite reports **40/40**.
+4. The acceptance suite reports **41/41**.
 5. **Performance is a hard constraint.** Telemaco is roughly 12x faster and uses
    about 6x less memory than headless Chrome on framework pages. Keep native
    Rust fast paths and add a JS fallback only for real spec edge cases. If your

@@ -41,7 +41,7 @@ cargo nextest run --release --features render --no-fail-fast
 ```
 
 The authoritative behavioral gate is the acceptance suite in `acceptance/`
-(40 stages, must stay 40/40):
+(41 stages, must stay 41/41):
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
