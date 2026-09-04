@@ -104,9 +104,15 @@ jobs:
 
       - name: Export the digest
         if: steps.creds.outputs.configured == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/digests"
-          touch "$RUNNER_TEMP/digests/${{ steps.build.outputs.digest }}"
+          # The bare hash, without the `sha256:` prefix: upload-artifact rejects
+          # a colon in a filename, and the merge job puts the prefix back when
+          # it reassembles the reference.
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
 
       - name: Upload the digest
         if: steps.creds.outputs.configured == 'true'
