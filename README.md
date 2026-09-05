@@ -8,6 +8,16 @@
     A headless browser engine in Rust, built for web scraping and AI agents.<br>
     Real JavaScript, real DOM, native layout and paint. No Chromium required.
   </p>
+
+  <p>
+    <a href="https://github.com/AlbertoBarrago/telemaco/releases"><img src="https://img.shields.io/github/v/release/AlbertoBarrago/telemaco?style=for-the-badge&label=release&color=45B1F8" alt="Release"></a>
+    <a href="https://github.com/AlbertoBarrago/telemaco/stargazers"><img src="https://img.shields.io/github/stars/AlbertoBarrago/telemaco?style=for-the-badge&label=stars&color=34D399" alt="GitHub stars"></a>
+    <a href="https://github.com/AlbertoBarrago/telemaco/blob/main/LICENSE"><img src="https://img.shields.io/github/license/AlbertoBarrago/telemaco?style=for-the-badge&label=license&color=9AA7B8" alt="License"></a>
+    <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AlbertoBarrago/telemaco/ci.yml?style=for-the-badge&label=CI&color=45B1F8" alt="CI"></a>
+    <a href="https://hub.docker.com/r/albz222/telemaco"><img src="https://img.shields.io/docker/pulls/albz222/telemaco?style=for-the-badge&label=docker%20pulls&color=34D399" alt="Docker pulls"></a>
+    <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.85%2B-45B1F8?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"></a>
+    <a href="https://github.com/AlbertoBarrago/telemaco"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-9AA7B8?style=for-the-badge" alt="Platforms"></a>
+  </p>
 </div>
 
 ---
