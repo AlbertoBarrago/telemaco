@@ -71,6 +71,27 @@ uninstall` first to also remove agent configs). See
 [Agent setup](#agent-setup-telemaco-install) below for `telemaco install` /
 `telemaco uninstall`.
 
+### Homebrew (macOS)
+
+```bash
+brew tap albertobarrago/telemaco
+brew install telemaco
+```
+
+Installs the render-enabled build (full DOM, layout, screenshots, PDF) as
+`telemaco`, with `telemaco-worker` alongside it for `scrape`. The stealth
+variant is a separate formula that installs as `telemaco-stealth`, so the two
+can coexist:
+
+```bash
+brew install telemaco-stealth
+telemaco-stealth --stealth fetch https://example.com --dump text
+```
+
+Bottles are published for Apple Silicon and Intel macOS. On Linux use
+`install.sh` or a prebuilt archive. Upgrades go through `brew upgrade` rather
+than `telemaco update`, which would replace a binary Homebrew owns.
+
 ### Updating
 
 ```bash
@@ -336,6 +357,12 @@ Tools: `browser_navigate`, `browser_snapshot`, `browser_screenshot`,
 MCP server, an instructions block in the agent's memory file, and a prompt hook
 that reminds the model to use Telemaco when a prompt looks web-bound.
 
+Run interactively it asks before each part that changes how the agent already
+behaves: the prompt hook, whether the MCP server should tell the agent to reach
+the web through Telemaco, auto-approving Telemaco's tools, and refusing the
+agent's own web search. `--yes` accepts them all; the flags below decline them
+one at a time.
+
 ```bash
 telemaco install                                     # interactive, detects installed agents
 telemaco install --yes                               # non-interactive, accepts the defaults
@@ -347,9 +374,10 @@ telemaco uninstall                                    # remove everything a glob
 telemaco uninstall --folder ./my-project              # remove it from one project directory
 ```
 
-Supported: Claude Code, Cursor, OpenAI Codex, Gemini CLI, Google Antigravity,
-Windsurf, OpenCode, Roo Code / Cline, Pi, DeepSeek Harness, Qwen Code, Factory
-Droid, Poolside, Kiro.
+Supported: Claude Code, Cursor, OpenAI Codex CLI, Gemini CLI, Google
+Antigravity, Codeium Windsurf, OpenCode, Roo Code / Cline, Pi Coding Agent,
+DeepSeek Harness, Qwen Code, Factory Droid, Poolside Agent, Kiro, Hermes
+Agent.
 
 | Flag | Description |
 |------|-------------|
@@ -360,6 +388,7 @@ Droid, Poolside, Kiro.
 | `--stealth` | Put `--stealth` in the agent's MCP command |
 | `--no-permissions` | Do not auto-approve Telemaco tools |
 | `--no-block-web` | Leave the agent's own web search/fetch enabled |
+| `--no-prompt-hook` | Skip the prompt hook; the MCP server and instructions block still install |
 | `--dry-run` | Report the plan without writing |
 | `--print-config <agent>` | Print the MCP snippet for one agent and exit |
 
@@ -369,7 +398,8 @@ removes Telemaco from the agent configs instead of adding it.
 By default the installer adds a guard that refuses the agent's built-in web
 search and fetch, so web work goes through Telemaco. Decline it interactively
 or pass `--no-block-web`; re-running with that flag removes a guard installed
-earlier.
+earlier. `--no-prompt-hook` works the same way, and takes the config file with
+it when the hook was the only thing in it.
 
 Every config file is copied to `<file>.telemaco-backup` before the first
 rewrite. A config that is not valid JSON is reported and left untouched rather

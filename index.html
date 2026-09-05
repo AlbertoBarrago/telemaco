@@ -374,40 +374,47 @@
     <div class="install-grid">
       <div class="install-card">
         <h3><span class="n">1</span> Installer script</h3>
-        <pre><span class="cmt"># Right binary for your machine, then offers to</span>
-<span class="cmt"># register telemaco as an MCP server for the</span>
-<span class="cmt"># AI agents it finds (Claude, Cursor, Windsurf)</span>
-<span class="cmd">$</span> git clone https://github.com/AlbertoBarrago/telemaco.git
-<span class="cmd">$</span> cd telemaco
-<span class="cmd">$</span> ./install.sh</pre>
+        <pre><span class="cmt"># Right binary for your machine, then offers to run</span>
+<span class="cmt"># `telemaco install` to wire it into the coding</span>
+<span class="cmt"># agents it finds on the machine</span>
+<span class="cmd">$</span> curl -fsSL https://raw.githubusercontent.com/AlbertoBarrago/telemaco/main/install.sh | bash</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">2</span> Docker</h3>
+        <h3><span class="n">2</span> Homebrew</h3>
+        <pre><span class="cmt"># macOS, Apple Silicon and Intel</span>
+<span class="cmd">$</span> brew tap albertobarrago/telemaco
+<span class="cmd">$</span> brew install telemaco
+<span class="cmt"># stealth build, side by side with the default one</span>
+<span class="cmd">$</span> brew install telemaco-stealth</pre>
+      </div>
+      <div class="install-card">
+        <h3><span class="n">3</span> Docker</h3>
         <pre><span class="cmt"># Published image, linux/amd64 + linux/arm64</span>
 <span class="cmd">$</span> docker pull albz222/telemaco:latest
 <span class="cmd">$</span> docker run -d --name telemaco \
     -p 127.0.0.1:9222:9222 albz222/telemaco:latest</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">3</span> Prebuilt binary</h3>
+        <h3><span class="n">4</span> Prebuilt binary</h3>
         <pre><span class="cmt"># Linux x86_64</span>
 <span class="cmd">$</span> curl -LO https://github.com/AlbertoBarrago/telemaco/releases/latest/download/telemaco-x86_64-linux.tar.gz
 <span class="cmd">$</span> tar xzf telemaco-x86_64-linux.tar.gz
 <span class="cmd">$</span> ./telemaco fetch https://example.com --eval "document.title"</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">4</span> From source</h3>
+        <h3><span class="n">5</span> From source</h3>
         <pre><span class="cmd">$</span> git clone https://github.com/AlbertoBarrago/telemaco.git
 <span class="cmd">$</span> cd telemaco
 <span class="cmd">$</span> cargo build --release -p telemaco-cli --bins --features render</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">5</span> Update</h3>
+        <h3><span class="n">6</span> Update</h3>
         <pre><span class="cmt"># Keep telemaco current</span>
 <span class="cmd">$</span> telemaco update            <span class="cmt"># latest release</span>
 <span class="cmd">$</span> telemaco update --check    <span class="cmt"># report only</span>
 <span class="cmt"># Keeps your build variant: a stealth install</span>
-<span class="cmt"># stays stealth instead of becoming the plain one</span></pre>
+<span class="cmt"># stays stealth instead of becoming the plain one</span>
+<span class="cmt"># Installed with brew? use `brew upgrade` instead</span></pre>
       </div>
     </div>
   </div>
@@ -478,7 +485,7 @@
     <div class="sec-head">
       <div class="kicker">MCP</div>
       <h2>Give your AI agents a browser</h2>
-      <p>Telemaco ships an MCP server that exposes browser automation to Claude Desktop, Cursor, and any MCP client.</p>
+      <p>Telemaco ships an MCP server that exposes browser automation to Claude Desktop, Cursor, and any MCP client. <code>telemaco install</code> wires it into 15 coding agents for you, asking before it changes anything, and <code>telemaco uninstall</code> takes it all back out.</p>
     </div>
     <div class="hero-code">
       <div class="code-head"><span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span>claude_desktop_config.json</span></div>
