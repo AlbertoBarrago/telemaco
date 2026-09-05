@@ -208,6 +208,73 @@
   .cta-band .btn { background: #04121a; color: #fff; }
   .cta-band .btn:hover { transform: translateY(-1px); }
 
+  /* agent grid */
+  .agents-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;
+  }
+  .agent {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; transition: border-color .2s, transform .2s;
+  }
+  .agent:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+  .agent .logo {
+    width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--line);
+    font-weight: 700; font-size: 13px; color: var(--accent-1);
+  }
+  .agent .name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.25; }
+  .agent .sub { font-size: 11px; color: var(--text-faint); }
+  .agents-note { text-align: center; color: var(--text-faint); font-size: 13px; margin-top: 20px; }
+
+  /* animated benchmark bars */
+  .bench { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 8px; }
+  .bench-card { background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; }
+  .bench-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .bench-card .bench-sub { font-size: 12px; color: var(--text-faint); margin-bottom: 18px; }
+  .bar-row { margin-bottom: 14px; }
+  .bar-row .bar-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+  .bar-row .bar-label .bname { color: var(--text-dim); }
+  .bar-row .bar-label .bval { font-weight: 600; font-family: var(--mono); }
+  .bar-track { height: 8px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; width: 0; transition: width 1.2s cubic-bezier(.2,.7,.2,1); }
+  .bar-fill.tl { background: var(--grad); }
+  .bar-fill.ch { background: rgba(255,255,255,0.18); }
+  .bench-note { font-size: 12px; color: var(--text-faint); margin-top: 14px; }
+
+  /* interactive terminal */
+  .term { max-width: 720px; margin: 0 auto; text-align: left; }
+  .term-input { display: flex; align-items: center; gap: 8px; padding: 14px 18px; }
+  .term-input .prompt { color: var(--accent-2); font-weight: 700; }
+  .term-input input {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: var(--text); font-family: var(--mono); font-size: 13.5px;
+  }
+  .term-input input::placeholder { color: var(--text-faint); }
+  .term-output { padding: 0 18px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.7; color: var(--text-dim); min-height: 40px; }
+  .term-output .out { color: var(--accent-2); }
+  .term-output .dim { color: var(--text-faint); }
+  .term-hint { text-align: center; color: var(--text-faint); font-size: 12px; margin-top: 12px; font-family: var(--mono); }
+
+  /* contributors */
+  .contributors { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .contributor {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg-card); border: 1px solid var(--line); border-radius: 999px;
+    padding: 8px 16px 8px 8px; text-decoration: none; transition: border-color .2s, transform .2s;
+  }
+  .contributor:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+  .contributor .avatar {
+    width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+    background: var(--grad); display: flex; align-items: center; justify-content: center;
+    color: #04121a; font-weight: 700; font-size: 13px;
+  }
+  .contributor .cname { font-size: 13px; font-weight: 600; color: var(--text); }
+  .contributor .crole { font-size: 11px; color: var(--text-faint); }
+  .contributor.featured { border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.06); }
+  .contributors-note { text-align: center; color: var(--text-faint); font-size: 13px; margin-top: 20px; }
+
   footer { padding: 48px 0 64px; border-top: 1px solid var(--line); margin-top: 48px; }
   .foot-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
   .foot-inner .brand { font-size: 15px; }
@@ -247,6 +314,7 @@
       <span class="brand-name">Telemaco</span>
     </a>
     <div class="nav-links">
+      <a href="#agents">Agents</a>
       <a href="#why">Why</a>
       <a href="#features">Features</a>
       <a href="#install">Install</a>
@@ -261,27 +329,34 @@
 
 <header class="hero">
   <div class="wrap">
-    <div class="hero-badge"><span class="dot"></span> Headless browser engine · Rust · No Chromium</div>
+    <div class="hero-badge"><span class="dot"></span> Headless browser engine · Rust · No Chromium
+      <span style="display:inline-flex;align-items:center;gap:6px;margin-left:4px;">
+        <img src="https://img.shields.io/github/stars/AlbertoBarrago/telemaco?style=flat&label=stars&color=34D399" alt="GitHub stars" style="height:20px;" />
+        <img src="https://img.shields.io/github/v/release/AlbertoBarrago/telemaco?style=flat&label=release&color=45B1F8" alt="Latest release" style="height:20px;" />
+      </span>
+    </div>
     <h1>Control the web<br />with <span class="grad">precision.</span></h1>
     <p class="lead">A headless browser engine in Rust, built for web scraping and AI agents. Real JavaScript, real DOM, native layout and paint — in a 70&nbsp;MB binary that starts instantly.</p>
     <div class="hero-cta">
       <a class="btn btn-primary" href="#install">Get started</a>
       <a class="btn btn-ghost" href="#quickstart">See it in action</a>
     </div>
-    <div class="hero-code">
+    <div class="hero-code term">
       <div class="code-head">
         <span class="c c1"></span><span class="c c2"></span><span class="c c3"></span>
-        <span>telemaco</span>
+        <span>telemaco — try it</span>
       </div>
-      <div class="code-body">
-        <span class="cmt"># Fetch a page, run real JavaScript, dump the result</span><br />
-        <span class="cmd">$</span> telemaco fetch https://news.ycombinator.com --eval "document.title"<br />
-        <span class="out">Hacker News</span><br /><br />
-        <span class="cmt"># Drive it like headless Chrome, from Puppeteer or Playwright</span><br />
-        <span class="cmd">$</span> telemaco serve --port 9222<br />
-        <span class="dim">→ CDP server listening on ws://127.0.0.1:9222</span>
+      <div class="term-input">
+        <span class="prompt">$</span>
+        <input id="term-input" type="text" placeholder="telemaco fetch https://example.com --eval &quot;document.title&quot;" autocomplete="off" spellcheck="false" />
+      </div>
+      <div class="term-output" id="term-output">
+        <span class="dim">Type a command and press Enter. Try:</span><br />
+        <span class="dim">telemaco fetch https://example.com --eval "document.title"</span><br />
+        <span class="dim">telemaco fetch https://news.ycombinator.com --dump links</span>
       </div>
     </div>
+    <p class="term-hint">Interactive demo · runs in your browser · no install needed</p>
   </div>
 </header>
 
@@ -294,6 +369,34 @@
       <div class="metric"><div class="num">70 MB</div><div class="lbl">Binary size</div><div class="sub">vs 300+ MB Chrome</div></div>
       <div class="metric"><div class="num">0</div><div class="lbl">Chromium required</div><div class="sub">native layout &amp; paint</div></div>
     </div>
+  </div>
+</section>
+
+<section id="agents">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Works with your agents</div>
+      <h2>One browser for every coding agent</h2>
+      <p><code>telemaco install</code> wires the MCP server and web tools into 15 coding agents for you, asking before it changes anything. <code>telemaco uninstall</code> takes it all back out.</p>
+    </div>
+    <div class="agents-grid">
+      <div class="agent"><div class="logo">CC</div><div><div class="name">Claude Code</div><div class="sub">Anthropic</div></div></div>
+      <div class="agent"><div class="logo">C</div><div><div class="name">Cursor</div><div class="sub">Anysphere</div></div></div>
+      <div class="agent"><div class="logo">CX</div><div><div class="name">OpenAI Codex</div><div class="sub">CLI</div></div></div>
+      <div class="agent"><div class="logo">G</div><div><div class="name">Gemini CLI</div><div class="sub">Google</div></div></div>
+      <div class="agent"><div class="logo">A</div><div><div class="name">Antigravity</div><div class="sub">Google · IDE + CLI</div></div></div>
+      <div class="agent"><div class="logo">W</div><div><div class="name">Windsurf</div><div class="sub">Codeium</div></div></div>
+      <div class="agent"><div class="logo">O</div><div><div class="name">OpenCode</div><div class="sub">SST</div></div></div>
+      <div class="agent"><div class="logo">R</div><div><div class="name">Roo Code</div><div class="sub">/ Cline</div></div></div>
+      <div class="agent"><div class="logo">P</div><div><div class="name">Pi</div><div class="sub">Coding Agent</div></div></div>
+      <div class="agent"><div class="logo">D</div><div><div class="name">DeepSeek</div><div class="sub">Harness</div></div></div>
+      <div class="agent"><div class="logo">Q</div><div><div class="name">Qwen Code</div><div class="sub">Alibaba</div></div></div>
+      <div class="agent"><div class="logo">D</div><div><div class="name">Factory Droid</div><div class="sub">Factory</div></div></div>
+      <div class="agent"><div class="logo">P</div><div><div class="name">Poolside</div><div class="sub">Agent</div></div></div>
+      <div class="agent"><div class="logo">K</div><div><div class="name">Kiro</div><div class="sub">AWS</div></div></div>
+      <div class="agent"><div class="logo">H</div><div><div class="name">Hermes</div><div class="sub">Nous Research</div></div></div>
+    </div>
+    <p class="agents-note">Plus any MCP client over stdio or HTTP. <code>telemaco install</code> detects what is on your machine and wires it up.</p>
   </div>
 </section>
 
@@ -318,6 +421,48 @@
           <tr><td class="metric-name">Puppeteer / Playwright</td><td class="col-telemaco win">Yes</td><td class="lose">Yes</td></tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="bench" style="margin-top:32px;">
+      <div class="bench-card">
+        <h3>Memory footprint</h3>
+        <div class="bench-sub">lower is better</div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="bname">Telemaco</span><span class="bval">30 MB</span></div>
+          <div class="bar-track"><div class="bar-fill tl" data-w="15"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="bname">Headless Chrome</span><span class="bval">200+ MB</span></div>
+          <div class="bar-track"><div class="bar-fill ch" data-w="100"></div></div>
+        </div>
+        <p class="bench-note">~6× less memory on the same page.</p>
+      </div>
+      <div class="bench-card">
+        <h3>Page load</h3>
+        <div class="bench-sub">lower is better</div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="bname">Telemaco</span><span class="bval">85 ms</span></div>
+          <div class="bar-track"><div class="bar-fill tl" data-w="17"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="bname">Headless Chrome</span><span class="bval">~500 ms</span></div>
+          <div class="bar-track"><div class="bar-fill ch" data-w="100"></div></div>
+        </div>
+        <p class="bench-note">~6× faster on framework pages.</p>
+      </div>
+      <div class="bench-card">
+        <h3>Binary size</h3>
+        <div class="bench-sub">lower is better</div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="bname">Telemaco</span><span class="bval">70 MB</span></div>
+          <div class="bar-track"><div class="bar-fill tl" data-w="23"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span class="bname">Headless Chrome</span><span class="bval">300+ MB</span></div>
+          <div class="bar-track"><div class="bar-fill ch" data-w="100"></div></div>
+        </div>
+        <p class="bench-note">A fraction of the footprint, no Chromium to install.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -503,12 +648,56 @@
   </div>
 </section>
 
+<section id="contributors">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Built with the community</div>
+      <h2>Open source, open to everyone</h2>
+      <p>Telemaco is shaped by its contributors. Every feature, every fix, every test.</p>
+    </div>
+    <div class="contributors">
+      <a class="contributor featured" href="https://github.com/acongiu17" target="_blank" rel="noopener">
+        <div class="avatar">AC</div>
+        <div><div class="cname">Andrea Congiu</div><div class="crole">Core contributor</div></div>
+      </a>
+      <a class="contributor" href="https://github.com/SGavrl" target="_blank" rel="noopener">
+        <div class="avatar">S</div>
+        <div><div class="cname">SGavrl</div><div class="crole">Contributor</div></div>
+      </a>
+      <a class="contributor" href="https://github.com/h4ckf0r0day" target="_blank" rel="noopener">
+        <div class="avatar">H</div>
+        <div><div class="cname">h4ckf0r0day</div><div class="crole">Contributor</div></div>
+      </a>
+      <a class="contributor" href="https://github.com/xrip" target="_blank" rel="noopener">
+        <div class="avatar">X</div>
+        <div><div class="cname">xrip</div><div class="crole">Contributor</div></div>
+      </a>
+      <a class="contributor" href="https://github.com/ousamabenyounes" target="_blank" rel="noopener">
+        <div class="avatar">B</div>
+        <div><div class="cname">Ben Younes</div><div class="crole">Contributor</div></div>
+      </a>
+      <a class="contributor" href="https://github.com/sycatle" target="_blank" rel="noopener">
+        <div class="avatar">S</div>
+        <div><div class="cname">sycatle</div><div class="crole">Contributor</div></div>
+      </a>
+      <a class="contributor" href="https://github.com/F0Rextasy" target="_blank" rel="noopener">
+        <div class="avatar">F</div>
+        <div><div class="cname">F0Rextasy</div><div class="crole">Contributor</div></div>
+      </a>
+    </div>
+    <p class="contributors-note">And many more. <a href="https://github.com/AlbertoBarrago/telemaco/graphs/contributors" target="_blank" rel="noopener" style="color:var(--accent-1);">See all contributors →</a></p>
+  </div>
+</section>
+
 <section>
   <div class="wrap">
     <div class="cta-band">
       <h2>Ready to control the web?</h2>
-      <p>Open source under the Apache 2.0 license. Clone it, build it, drive it.</p>
-      <a class="btn" href="https://github.com/AlbertoBarrago/telemaco" target="_blank" rel="noopener">View on GitHub ↗</a>
+      <p>Open source under the Apache 2.0 license. Install in 30 seconds, wire it into your agent, and start scraping.</p>
+      <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+        <a class="btn" href="#install">Install in 30 seconds</a>
+        <a class="btn" style="background:transparent;border:2px solid #04121a;color:#04121a;" href="https://github.com/AlbertoBarrago/telemaco" target="_blank" rel="noopener">Star on GitHub ★</a>
+      </div>
     </div>
   </div>
 </section>
@@ -545,6 +734,49 @@
       document.getElementById('tab-' + id).classList.add('active');
       document.getElementById('tab-label').textContent = id === 'cli' ? 'terminal' : id + '.js';
     });
+  });
+
+  // Animated benchmark bars: fill when the section scrolls into view
+  const benchObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.querySelectorAll('.bar-fill').forEach(bar => {
+          bar.style.width = bar.dataset.w + '%';
+        });
+        benchObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.3 });
+  document.querySelectorAll('.bench-card').forEach(card => benchObserver.observe(card));
+
+  // Interactive terminal: simulate telemaco commands
+  const termInput = document.getElementById('term-input');
+  const termOutput = document.getElementById('term-output');
+  const COMMANDS = {
+    'telemaco fetch https://example.com --eval "document.title"':
+      '<span class="out">Example Domain</span>',
+    'telemaco fetch https://news.ycombinator.com --dump links':
+      '<span class="out">1. Show HN: ...</span><br/><span class="out">2. Ask HN: ...</span><br/><span class="out">3. Launch HN: ...</span>',
+    'telemaco fetch https://example.com --dump text':
+      '<span class="out">Example Domain</span><br/><span class="dim">This domain is for use in illustrative examples...</span>',
+    'telemaco serve --port 9222':
+      '<span class="dim">→ CDP server listening on ws://127.0.0.1:9222</span>',
+    'telemaco scrape url1 url2 url3 --concurrency 25 --format json':
+      '<span class="out">[{"url":"url1","title":"..."},{"url":"url2","title":"..."}]</span>',
+    'telemaco --version':
+      '<span class="out">telemaco 0.1.3</span>',
+    'telemaco install':
+      '<span class="dim">Detected: Claude Code, Cursor, Codex</span><br/><span class="out">✓ Wired telemaco into 3 agents</span>',
+    'help':
+      '<span class="dim">Try: telemaco fetch https://example.com --eval "document.title"</span><br/><span class="dim">telemaco serve --port 9222</span><br/><span class="dim">telemaco install</span>'
+  };
+  termInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const cmd = termInput.value.trim();
+    if (!cmd) return;
+    const out = COMMANDS[cmd] || '<span class="dim">Unknown command. Type "help" for examples.</span>';
+    termOutput.innerHTML = '<span class="cmd">$</span> ' + cmd.replace(/</g, '&lt;') + '<br/>' + out;
+    termInput.value = '';
   });
 </script>
 </body>
