@@ -223,7 +223,9 @@
     display: flex; align-items: center; justify-content: center;
     background: rgba(255,255,255,0.06); border: 1px solid var(--line);
     font-weight: 700; font-size: 13px; color: var(--accent-1);
+    overflow: hidden;
   }
+  .agent .logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .agent .name { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.25; }
   .agent .sub { font-size: 11px; color: var(--text-faint); }
   .agents-note { text-align: center; color: var(--text-faint); font-size: 13px; margin-top: 20px; }
@@ -380,21 +382,21 @@
       <p><code>telemaco install</code> wires the MCP server and web tools into 15 coding agents for you, asking before it changes anything. <code>telemaco uninstall</code> takes it all back out.</p>
     </div>
     <div class="agents-grid">
-      <div class="agent"><div class="logo">CC</div><div><div class="name">Claude Code</div><div class="sub">Anthropic</div></div></div>
-      <div class="agent"><div class="logo">C</div><div><div class="name">Cursor</div><div class="sub">Anysphere</div></div></div>
-      <div class="agent"><div class="logo">CX</div><div><div class="name">OpenAI Codex</div><div class="sub">CLI</div></div></div>
-      <div class="agent"><div class="logo">G</div><div><div class="name">Gemini CLI</div><div class="sub">Google</div></div></div>
-      <div class="agent"><div class="logo">A</div><div><div class="name">Antigravity</div><div class="sub">Google · IDE + CLI</div></div></div>
-      <div class="agent"><div class="logo">W</div><div><div class="name">Windsurf</div><div class="sub">Codeium</div></div></div>
-      <div class="agent"><div class="logo">O</div><div><div class="name">OpenCode</div><div class="sub">SST</div></div></div>
-      <div class="agent"><div class="logo">R</div><div><div class="name">Roo Code</div><div class="sub">/ Cline</div></div></div>
-      <div class="agent"><div class="logo">P</div><div><div class="name">Pi</div><div class="sub">Coding Agent</div></div></div>
-      <div class="agent"><div class="logo">D</div><div><div class="name">DeepSeek</div><div class="sub">Harness</div></div></div>
-      <div class="agent"><div class="logo">Q</div><div><div class="name">Qwen Code</div><div class="sub">Alibaba</div></div></div>
-      <div class="agent"><div class="logo">D</div><div><div class="name">Factory Droid</div><div class="sub">Factory</div></div></div>
-      <div class="agent"><div class="logo">P</div><div><div class="name">Poolside</div><div class="sub">Agent</div></div></div>
-      <div class="agent"><div class="logo">K</div><div><div class="name">Kiro</div><div class="sub">AWS</div></div></div>
-      <div class="agent"><div class="logo">H</div><div><div class="name">Hermes</div><div class="sub">Nous Research</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/claude.ico" alt="Claude Code" /></div><div><div class="name">Claude Code</div><div class="sub">Anthropic</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/cursor.ico" alt="Cursor" /></div><div><div class="name">Cursor</div><div class="sub">Anysphere</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/codex.ico" alt="OpenAI Codex" /></div><div><div class="name">OpenAI Codex</div><div class="sub">CLI</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/gemini.ico" alt="Gemini CLI" /></div><div><div class="name">Gemini CLI</div><div class="sub">Google</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/antigravity.ico" alt="Antigravity" /></div><div><div class="name">Antigravity</div><div class="sub">Google · IDE + CLI</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/windsurf.ico" alt="Windsurf" /></div><div><div class="name">Windsurf</div><div class="sub">Codeium</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/opencode.ico" alt="OpenCode" /></div><div><div class="name">OpenCode</div><div class="sub">SST</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/roocline.ico" alt="Roo Code" /></div><div><div class="name">Roo Code</div><div class="sub">/ Cline</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/pi.ico" alt="Pi" /></div><div><div class="name">Pi</div><div class="sub">Coding Agent</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/deepseek.ico" alt="DeepSeek" /></div><div><div class="name">DeepSeek</div><div class="sub">Harness</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/qwen.ico" alt="Qwen Code" /></div><div><div class="name">Qwen Code</div><div class="sub">Alibaba</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/factory.ico" alt="Factory Droid" /></div><div><div class="name">Factory Droid</div><div class="sub">Factory</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/poolside.ico" alt="Poolside" /></div><div><div class="name">Poolside</div><div class="sub">Agent</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/kiro.ico" alt="Kiro" /></div><div><div class="name">Kiro</div><div class="sub">AWS</div></div></div>
+      <div class="agent"><div class="logo"><img src="assets/agents/hermes.ico" alt="Hermes" /></div><div><div class="name">Hermes</div><div class="sub">Nous Research</div></div></div>
     </div>
     <p class="agents-note">Plus any MCP client over stdio or HTTP. <code>telemaco install</code> detects what is on your machine and wires it up.</p>
   </div>
