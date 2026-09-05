@@ -185,12 +185,14 @@ pub async fn run(
     user_agent: Option<String>,
     stealth: bool,
     limits: crate::config::ExtractionLimits,
+    agent_directives: bool,
 ) -> Result<()> {
     let addr: std::net::SocketAddr = format!("{}:{}", host, port).parse()?;
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!("MCP HTTP server on http://{}:{}/mcp", host, port);
 
-    let mut state = BrowserState::new(proxy, user_agent, stealth, limits);
+    let mut state =
+        BrowserState::new(proxy, user_agent, stealth, limits).with_agent_directives(agent_directives);
     let allowed_origins = allowed_origins_env();
 
     loop {

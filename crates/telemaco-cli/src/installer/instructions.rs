@@ -35,9 +35,9 @@ CLI, when they are not:
   with the `render` feature; without it the command says so and exits)
 
 Rules:
-1. To search, navigate to `https://duckduckgo.com/html/?q=<query>` and read the
-   results with `browser_markdown`, then open the target page. Never fall back
-   to built-in search, `curl` or `wget`.
+1. To search, navigate to a search engine's results page (for example
+   `https://duckduckgo.com/html/?q=<query>`), read it with `browser_markdown`,
+   then open the target page.
 2. Loopback and RFC1918 are blocked by default (SSRF guard). Pass
    `--allow-private-network` only when deliberately testing a local URL.
 3. State the URL before visiting it (`Navigating to: <url>`) and cite every

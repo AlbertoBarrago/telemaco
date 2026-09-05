@@ -382,7 +382,46 @@ pub fn run_installer(args: InstallCliArgs) -> Result<()> {
         false
     };
 
-    // 6. Refusing the agent's built-in web tools is the point of the tool, but
+    // 6. The prompt hook runs on every prompt the agent receives, so it is
+    //    asked for rather than assumed. Declining still leaves the MCP server
+    //    and the instructions block, which is the bulk of what the installer
+    //    does.
+    let prompt_hook = if !is_interactive {
+        true
+    } else {
+        match Confirm::new("Install the prompt hook? (Runs on every prompt; adds a note when one looks web-bound)")
+            .with_default(true)
+            .prompt()
+        {
+            Ok(val) => val,
+            Err(_) => {
+                println!("Installation cancelled.");
+                return Ok(());
+            }
+        }
+    };
+
+    // 7. Whether the MCP server itself tells the agent to prefer Telemaco. Off
+    //    in the server's own default, so this is the only thing that turns it
+    //    on, and only for the config this installer writes.
+    let agent_directives = if !is_interactive {
+        true
+    } else {
+        match Confirm::new("Let the MCP server tell the agent that Telemaco is the way to reach the web?")
+            .with_default(true)
+            .with_help_message("Only applies to the config written here; a server started by hand stays neutral")
+            .prompt()
+        {
+            Ok(val) => val,
+            Err(_) => {
+                println!("Installation cancelled.");
+                return Ok(());
+            }
+        }
+    };
+    targets::common::set_agent_directives(agent_directives);
+
+    // 8. Refusing the agent's built-in web tools is the point of the tool, but
     //    it disables something the user already had, so it is stated and can be
     //    declined.
     let blocks_web = selected_targets.contains(&TargetId::Claude)
@@ -418,11 +457,22 @@ pub fn run_installer(args: InstallCliArgs) -> Result<()> {
     }
     println!();
 
+    // Non-interactive runs never saw the question, so say what was decided for
+    // them and how to undo it, rather than leaving it to be discovered.
+    if !is_interactive && block_builtin_web && blocks_web {
+        println!(
+            "⚠  The agent's own web search/fetch will be refused so it goes through Telemaco.\n\
+             \x20  Re-run with --no-block-web to leave them enabled, or `telemaco uninstall` to undo."
+        );
+        println!();
+    }
+
     let install_opts = TargetInstallOptions {
         auto_allow,
         stealth,
         binary_path,
         block_builtin_web,
+        prompt_hook,
         dry_run: args.dry_run,
     };
 

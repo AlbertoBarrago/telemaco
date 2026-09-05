@@ -357,7 +357,7 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         }
 
         // Register UserPromptSubmit hook
-        if add_user_prompt_hook(&mut settings_json, &prompt_hook_command(&opts.binary_path)) {
+        if opts.prompt_hook && add_user_prompt_hook(&mut settings_json, &prompt_hook_command(&opts.binary_path)) {
             modified = true;
         }
 

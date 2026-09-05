@@ -197,6 +197,10 @@ pub struct TargetInstallOptions {
     pub binary_path: String,
     /// Refuse the agent's own web tools so it has to go through Telemaco.
     pub block_builtin_web: bool,
+    /// Install the prompt hook, which runs on every prompt the agent receives
+    /// and injects a note when the prompt looks web-bound. Declining leaves
+    /// the MCP server and the instructions block, which need no hook.
+    pub prompt_hook: bool,
     /// Report what would change without touching the disk.
     pub dry_run: bool,
 }
@@ -548,6 +552,7 @@ mod tests {
             stealth: true,
             binary_path: "/bin/telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -585,6 +590,7 @@ mod tests {
             stealth: false,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -616,6 +622,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -680,6 +687,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -721,6 +729,7 @@ mod tests {
             stealth: false,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -747,6 +756,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -777,6 +787,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -803,6 +814,7 @@ mod tests {
             stealth: false,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -876,6 +888,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -903,6 +916,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -937,6 +951,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -969,6 +984,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -1005,6 +1021,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -1043,6 +1060,7 @@ mod tests {
             stealth: true,
             binary_path: binary.to_string(),
             block_builtin_web,
+            prompt_hook: true,
             dry_run,
         }
     }
@@ -1285,6 +1303,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
         install_target(TargetId::Claude, &loc, &no_perms);
@@ -2094,6 +2113,7 @@ mod tests {
             stealth: false,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
         let res = install_target(TargetId::RooCline, &loc, &opts);
@@ -2124,6 +2144,7 @@ mod tests {
             stealth: false,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
         let res = install_target(TargetId::RooCline, &loc, &opts);
@@ -2149,6 +2170,7 @@ mod tests {
             stealth: false,
             binary_path: "/opt/bin/telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 
@@ -2167,6 +2189,7 @@ mod tests {
             stealth: false,
             binary_path: "/usr/local/bin/telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
         install_target(TargetId::Claude, &loc, &opts2);
@@ -2193,6 +2216,7 @@ mod tests {
             stealth: false,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
         let res = install_target(TargetId::Gemini, &loc, &opts);
@@ -3038,6 +3062,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
         install_target(TargetId::Claude, &loc, &opts);
@@ -3129,6 +3154,7 @@ mod tests {
             stealth: true,
             binary_path: "telemaco".to_string(),
             block_builtin_web: true,
+            prompt_hook: true,
             dry_run: false,
         };
 

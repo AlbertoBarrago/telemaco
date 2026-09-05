@@ -46,14 +46,13 @@ struct AntigravityPreInvocationResult {
 }
 
 pub const TELEMACO_DIRECTIVE: &str = r#"<telemaco_directive>
-MANDATORY WEB & SEARCH DIRECTIVE:
-Whenever visiting URLs, searching documentation, or inspecting web content for this request, YOU MUST USE TELEMACO tools (browser_navigate, browser_markdown, browser_snapshot) or `telemaco fetch <url> --dump markdown` instead of built-in search or curl.
-- To search the web: browser_navigate(url="https://duckduckgo.com/html/?q=<query>") then browser_markdown()
-- Open page: browser_navigate(url=...)
-- Read content as clean Markdown: browser_markdown()
-- Inspect DOM / form controls: browser_snapshot()
-- Source transparency: Always state the target URL being visited (e.g. `Navigating to: <url>`) and cite source URLs in your answer.
-Do NOT use generic search summaries when Telemaco can inspect the real rendered page.
+Telemaco is available for the web work in this request.
+It runs a real browser (V8, full DOM, layout, stealth against bot detection), so it reads pages a plain fetch or a search summary cannot.
+- Open a page: browser_navigate(url=...), or `telemaco fetch <url> --dump markdown`
+- Read it as clean Markdown: browser_markdown()
+- Inspect the DOM and form controls: browser_snapshot()
+- Search: navigate to a search engine's results page, then read it with browser_markdown()
+When you use it, state the URL you are visiting (e.g. `Navigating to: <url>`) and cite the sources in your answer.
 </telemaco_directive>"#;
 
 /// How an agent wants the hook's answer on stdout.
@@ -642,7 +641,7 @@ mod tests {
         assert!(parsed["hook_specific_output"]["additional_context"]
             .as_str()
             .unwrap()
-            .contains("TELEMACO"));
+            .contains("<telemaco_directive>"));
         // camelCase would be ignored in silence, which is the failure mode the
         // docs warn about.
         assert!(parsed["hookSpecificOutput"].is_null());
@@ -658,7 +657,7 @@ mod tests {
         let input = r#"{"hook_event_name":"pre_llm_call","tool_name":null,"extra":{"user_message":"search the web for tokio docs"}}"#;
         let out = process_hook_input_as(input, OutputFormat::Hermes).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(parsed["context"].as_str().unwrap().contains("TELEMACO"));
+        assert!(parsed["context"].as_str().unwrap().contains("<telemaco_directive>"));
 
         // No web intent, no injection.
         let quiet = r#"{"hook_event_name":"pre_llm_call","extra":{"user_message":"rename this variable"}}"#;

@@ -155,7 +155,7 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
     };
     let hooks_existed = hooks_path.exists();
     if let Some(mut hooks_json) = out.load_json(&hooks_path) {
-        if add_user_prompt_hook(&mut hooks_json, &prompt_hook_command(&opts.binary_path)) {
+        if opts.prompt_hook && add_user_prompt_hook(&mut hooks_json, &prompt_hook_command(&opts.binary_path)) {
             let action = if hooks_existed { Action::Updated } else { Action::Created };
             out.write_json(&hooks_path, &hooks_json, action);
         }

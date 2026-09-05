@@ -128,7 +128,7 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
     //    a hook name of our choosing.
     let hooks_path = dir.join("hooks.json");
     let hooks_existed = hooks_path.exists();
-    if let Some(mut hooks_json) = out.load_json(&hooks_path) {
+    if let Some(mut hooks_json) = opts.prompt_hook.then(|| out.load_json(&hooks_path)).flatten() {
         let pre_invocation = json!([
             {
                 "command": prompt_hook_command(&opts.binary_path),

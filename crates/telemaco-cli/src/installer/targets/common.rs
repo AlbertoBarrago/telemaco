@@ -253,7 +253,7 @@ impl Outcome {
 /// built-in web tools. Plain `echo` on purpose: it keeps blocking even if the
 /// telemaco binary is missing or not on PATH, and exit code 2 is the
 /// convention agents read as "blocked, show this to the model".
-pub const WEB_BLOCK_COMMAND: &str = "echo 'CRITICAL: Built-in search/fetch is disabled. You MUST use Telemaco tools (browser_navigate, browser_markdown) or telemaco fetch instead. To search, navigate to https://duckduckgo.com/html/?q=...' >&2; exit 2";
+pub const WEB_BLOCK_COMMAND: &str = "echo 'Built-in search/fetch was turned off by `telemaco install`. Use the Telemaco tools (browser_navigate, browser_markdown) or `telemaco fetch <url> --dump markdown` instead. To restore the built-in tools, run `telemaco uninstall` or re-run the installer with --no-block-web.' >&2; exit 2";
 
 /// True for a path that is a symlink, whatever it points at.
 fn is_symlink(path: &Path) -> bool {
@@ -364,12 +364,36 @@ pub fn all_agents_files_in(dir: &Path) -> Vec<PathBuf> {
     vec![dir.join("AGENTS.override.md"), dir.join("AGENTS.md")]
 }
 
+/// Whether the MCP entries written by this run ask the server for its agent
+/// directives.
+///
+/// Decided once, from the user's answer, before any target builds its config.
+/// A process-wide value rather than another parameter: the entry builders are
+/// called from fourteen target modules and the snippet printer, and a second
+/// `bool` sitting next to `stealth` at nineteen call sites is an argument-order
+/// bug waiting to happen for a value that never varies within a run. The
+/// installer is a one-shot command, so there is nothing else for this to race
+/// with.
+static AGENT_DIRECTIVES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Set from the installer's answer before any config is built.
+pub fn set_agent_directives(on: bool) {
+    AGENT_DIRECTIVES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn agent_directives() -> bool {
+    AGENT_DIRECTIVES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub fn stdio_mcp_args(stealth: bool) -> Vec<String> {
+    let mut args = vec!["mcp".to_string()];
     if stealth {
-        vec!["mcp".to_string(), "--stealth".to_string()]
-    } else {
-        vec!["mcp".to_string()]
+        args.push("--stealth".to_string());
     }
+    if agent_directives() {
+        args.push("--agent-directives".to_string());
+    }
+    args
 }
 
 /// Constructs a standard stdio MCP JSON server definition.

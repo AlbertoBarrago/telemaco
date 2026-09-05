@@ -161,7 +161,7 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
             &mut out,
             &hooks_path,
             &prompt_hook_command_cursor(&opts.binary_path),
-            true,
+            opts.prompt_hook,
         );
     }
 

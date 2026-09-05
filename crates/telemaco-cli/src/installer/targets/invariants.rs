@@ -66,6 +66,7 @@ fn opts(binary: &str, dry_run: bool) -> TargetInstallOptions {
         stealth: true,
         binary_path: binary.to_string(),
         block_builtin_web: true,
+        prompt_hook: true,
         dry_run,
     }
 }

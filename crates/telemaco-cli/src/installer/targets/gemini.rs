@@ -140,11 +140,13 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         // hook's stdout as JSON: "your script must not print any plain text to
         // stdout other than the final JSON"
         // (google-gemini/gemini-cli docs/hooks/reference.md).
-        if add_prompt_hook_for_event(
-            &mut settings_json,
-            "BeforeAgent",
-            &prompt_hook_command_json(&opts.binary_path),
-        ) {
+        if opts.prompt_hook
+            && add_prompt_hook_for_event(
+                &mut settings_json,
+                "BeforeAgent",
+                &prompt_hook_command_json(&opts.binary_path),
+            )
+        {
             modified = true;
         }
 

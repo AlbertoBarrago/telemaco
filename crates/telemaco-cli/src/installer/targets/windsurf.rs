@@ -182,7 +182,7 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
 
     let (hooks_path, wrapped) = hooks_target(loc, home);
     let hooks_existed = hooks_path.exists();
-    if let Some(mut hooks_json) = out.load_json(&hooks_path) {
+    if let Some(mut hooks_json) = opts.prompt_hook.then(|| out.load_json(&hooks_path)).flatten() {
         let cmd = prompt_hook_command_json(&opts.binary_path);
         let changed = if wrapped {
             add_user_prompt_hook(&mut hooks_json, &cmd)

@@ -155,7 +155,7 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         // Qwen parses a command hook's stdout as JSON and ignores anything
         // else, so the plain-text directive never reached the model
         // (QwenLM/qwen-code docs/users/features/hooks.md).
-        if add_user_prompt_hook(&mut settings_json, &prompt_hook_command_json(&opts.binary_path)) {
+        if opts.prompt_hook && add_user_prompt_hook(&mut settings_json, &prompt_hook_command_json(&opts.binary_path)) {
             modified = true;
         }
 

@@ -237,6 +237,13 @@ enum Command {
 
         #[arg(long)]
         user_agent: Option<String>,
+
+        /// Have the server tell the agent, on connect, that Telemaco is the
+        /// way to reach the web. Off by default: a server wired up by hand
+        /// answers with plain capabilities. `telemaco install` sets this when
+        /// the user accepts it
+        #[arg(long)]
+        agent_directives: bool,
     },
 
     /// Install Telemaco MCP server and agent directives into AI coding assistants
@@ -640,6 +647,7 @@ async fn main() -> anyhow::Result<()> {
             port,
             proxy,
             user_agent,
+            agent_directives,
             max_chars,
         }) => {
             let mcp_proxy = merge_proxy(global_proxy.clone(), proxy);
@@ -650,9 +658,18 @@ async fn main() -> anyhow::Result<()> {
                 limits.max_chars = max_chars;
             }
             if http {
-                telemaco_mcp::http::run(host, port, mcp_proxy, user_agent, stealth, limits).await?;
+                telemaco_mcp::http::run(
+                    host,
+                    port,
+                    mcp_proxy,
+                    user_agent,
+                    stealth,
+                    limits,
+                    agent_directives,
+                )
+                .await?;
             } else {
-                telemaco_mcp::run(mcp_proxy, user_agent, stealth, limits).await?;
+                telemaco_mcp::run(mcp_proxy, user_agent, stealth, limits, agent_directives).await?;
             }
         }
         Some(Command::Install {

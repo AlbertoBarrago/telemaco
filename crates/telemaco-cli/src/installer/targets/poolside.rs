@@ -155,10 +155,12 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         if opts.block_builtin_web {
             content.push_str(&format!("  PreToolUse:\n{}\n", indent_block(&guard_item, 4)));
         }
-        content.push_str(&format!(
-            "  UserPromptSubmit:\n{}\n",
-            indent_block(&context_item, 4)
-        ));
+        if opts.prompt_hook {
+            content.push_str(&format!(
+                "  UserPromptSubmit:\n{}\n",
+                indent_block(&context_item, 4)
+            ));
+        }
         out.write_text(&settings_path, &content, Action::Created);
     } else if let Some(mut content) = out.load_text(&settings_path) {
         let original = content.clone();
@@ -202,20 +204,29 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
                 modified = true;
             }
         }
-        if has_context(&content) {
+        if opts.prompt_hook && has_context(&content) {
             if let Some(updated) = refresh_named_hook(&content, "telemaco-context", &context_item) {
                 if updated != content {
                     content = updated;
                     modified = true;
                 }
             }
-        } else {
+        } else if opts.prompt_hook {
             match upsert_yaml_path(&content, &["hooks", "UserPromptSubmit"], &context_item) {
                 Ok(updated) => {
                     content = updated;
                     modified = true;
                 }
                 Err(e) => out.note(format!("{}: {}", settings_path.display(), e)),
+            }
+        } else if has_context(&content) {
+            // Same as the guard above: reinstalling with the hook declined
+            // takes back the one an earlier install added.
+            let (without, removed) =
+                remove_yaml_block(&content, |l| l.trim().starts_with("- name: telemaco-context"));
+            if removed {
+                content = prune_empty_yaml_keys(&without, &["hooks", "UserPromptSubmit"]);
+                modified = true;
             }
         }
 

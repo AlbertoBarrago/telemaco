@@ -35,6 +35,7 @@ async fn open_sse_stream_does_not_block_other_requests() {
             None,
             false,
             Default::default(),
+            false,
         ).await;
     });
 

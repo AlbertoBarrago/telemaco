@@ -81,7 +81,7 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         if modified {
             prune_installer_scaffolding(&mut hooks_json);
         }
-        if add_user_prompt_hook_flat(&mut hooks_json, &prompt_hook_command(&opts.binary_path)) {
+        if opts.prompt_hook && add_user_prompt_hook_flat(&mut hooks_json, &prompt_hook_command(&opts.binary_path)) {
             modified = true;
         }
         if modified {

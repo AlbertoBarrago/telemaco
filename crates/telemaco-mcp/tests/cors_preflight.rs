@@ -34,6 +34,7 @@ async fn options_preflight_lists_required_browser_headers() {
             None,
             false,
             Default::default(),
+            false,
         ).await;
     });
 
@@ -109,6 +110,7 @@ async fn oversized_content_length_is_rejected() {
             None,
             false,
             Default::default(),
+            false,
         ).await;
     });
 

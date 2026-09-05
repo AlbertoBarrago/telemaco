@@ -308,6 +308,11 @@ telemaco mcp                      # stdio, for clients that launch a subprocess
 telemaco mcp --http --port 8080   # HTTP, endpoint: http://127.0.0.1:8080/mcp
 ```
 
+The server answers `initialize` with plain capabilities. Add `--agent-directives`
+to have it also tell the agent, on connect, that Telemaco is how it should reach
+the web; `telemaco install` adds this flag when you accept it, so a server you
+wire up by hand stays neutral.
+
 Claude Desktop config:
 
 ```json
