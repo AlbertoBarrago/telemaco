@@ -7212,6 +7212,17 @@ fn layout_dom_once(
         })
         .collect();
 
+    if take_box_tree_depth_exceeded() {
+        // Never silent: this only fires on a pathological document, and the
+        // layout it produced is genuinely incomplete. `telemaco-render` has no
+        // tracing dependency, so this matches the crate's existing stderr
+        // diagnostics.
+        eprintln!(
+            "[render] box tree clipped at depth {}: deeper elements generate no boxes",
+            MAX_BOX_TREE_DEPTH,
+        );
+    }
+
     (
         DomLayout {
             rects,
@@ -9294,6 +9305,66 @@ pub(crate) fn rendered_descendants(tree: &DomTree, root: NodeId) -> Vec<NodeId> 
         stack.extend(children.into_iter().rev());
     }
     result
+}
+
+/// Maximum nesting depth of generated boxes.
+///
+/// `cascade_walk` runs on an explicit work stack, but the box-tree
+/// construction below it (`build` and the table/grid builders it calls) still
+/// recurses once per generated box with a large frame. A page-controlled tree
+/// a few hundred boxes deep overflowed the thread stack, and a stack overflow
+/// is not a panic: `catch_unwind`, the V8 termination watchdog and the process
+/// deadline all fail to contain it, so one hostile page aborted a whole
+/// `serve` process along with every session on it.
+///
+/// The budget counts generated boxes rather than DOM nodes, because that is
+/// what the deep frames are proportional to: a chain of flattened inline
+/// wrappers costs a fraction of a chain of block boxes. Measured overflow is
+/// at ~210 nested block boxes on the 2 MB stack of a CDP connection thread,
+/// so this leaves a comfortable margin while staying far above the ~60 levels
+/// real documents reach.
+pub(crate) const MAX_BOX_TREE_DEPTH: usize = 128;
+
+thread_local! {
+    /// Depth of the `build` recursion on this thread, and whether the budget
+    /// was ever hit during the current layout.
+    static BOX_TREE_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static BOX_TREE_DEPTH_EXCEEDED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// RAII counter for one level of box-tree recursion.
+///
+/// A guard rather than a plain counter so the depth unwinds correctly through
+/// every early return in `build` (and on a panic), and a thread-local rather
+/// than a `depth` parameter so the budget also covers the recursion that goes
+/// through the table and grid builders without threading an argument through
+/// roughly thirty call sites.
+struct BoxTreeDepthGuard;
+
+impl BoxTreeDepthGuard {
+    /// `None` once the budget is spent, which the caller reports as "this
+    /// element generates no box" - the same contract as `display: none`.
+    fn enter() -> Option<Self> {
+        BOX_TREE_DEPTH.with(|depth| {
+            if depth.get() >= MAX_BOX_TREE_DEPTH {
+                BOX_TREE_DEPTH_EXCEEDED.with(|hit| hit.set(true));
+                return None;
+            }
+            depth.set(depth.get() + 1);
+            Some(BoxTreeDepthGuard)
+        })
+    }
+}
+
+impl Drop for BoxTreeDepthGuard {
+    fn drop(&mut self) {
+        BOX_TREE_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+    }
+}
+
+/// Take and clear the "budget was hit" flag for the layout that just ran.
+fn take_box_tree_depth_exceeded() -> bool {
+    BOX_TREE_DEPTH_EXCEEDED.with(|hit| hit.replace(false))
 }
 
 /// Does `id` have any direct rendered child that is inline-level (a
@@ -12170,6 +12241,9 @@ fn build(
     ifc_items: &mut IfcRegistry,
     styles: &HashMap<NodeId, crate::LayoutStyle>,
 ) -> Option<taffy::NodeId> {
+    // Held for the whole call: every recursive builder below reaches this
+    // function, so one guard here bounds the depth of the entire box tree.
+    let _depth = BoxTreeDepthGuard::enter()?;
     let node = tree.get_node(id)?;
     let _name = node.as_element()?;
     let style = styles.get(&id)?;
@@ -14723,6 +14797,44 @@ mod tests {
     use super::*;
     use telemaco_dom::tree::ShadowRootMode;
     use telemaco_dom::tree_sink::parse_html;
+
+    // A page-controlled DOM deeper than the recursive box-tree walks can
+    // handle used to overflow the thread stack and abort the process, taking
+    // a whole `serve` worker and every session on it down with one page. The
+    // depth budget must keep layout finishing normally.
+    //
+    // Falsifiable: lowering the nesting here below MAX_BOX_TREE_DEPTH makes
+    // the clipping assertion fail, and removing the cap makes the process
+    // abort on this input rather than report a test failure.
+    #[test]
+    fn deeply_nested_dom_is_clipped_instead_of_overflowing_the_stack() {
+        let depth = MAX_BOX_TREE_DEPTH * 8;
+        let html = format!(
+            "<html><body>{}deep{}</body></html>",
+            "<div>".repeat(depth),
+            "</div>".repeat(depth),
+        );
+        let tree = parse_html(&html);
+        let layout = layout_dom(&tree, (800.0, 600.0));
+
+        // Nodes above the budget still lay out.
+        let shallow = rendered_children(&tree, tree.document())
+            .into_iter()
+            .next()
+            .expect("document has a root element");
+        assert!(
+            layout.rects.contains_key(&shallow),
+            "nodes above the depth budget must still produce boxes"
+        );
+
+        // And the tree below it produced no boxes, which is what bounds the
+        // recursion depth of every walk downstream of the cascade.
+        assert!(
+            layout.rects.len() <= MAX_BOX_TREE_DEPTH + 8,
+            "expected the box tree to stop at the depth budget, got {} boxes",
+            layout.rects.len(),
+        );
+    }
 
     fn attach_programmatic_shadow(tree: &DomTree, host: NodeId, source: NodeId) -> NodeId {
         let root = tree
