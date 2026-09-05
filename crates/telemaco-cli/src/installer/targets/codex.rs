@@ -160,9 +160,12 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
             out.write_json(&hooks_path, &hooks_json, action);
         } else if !opts.prompt_hook && remove_user_prompt_hook(&mut hooks_json) {
             // Reinstalling with the hook declined takes back the one an
-            // earlier install added.
-            let action = if hooks_existed { Action::Updated } else { Action::Created };
-            out.write_json(&hooks_path, &hooks_json, action);
+            // earlier install added, and takes the file with it when the hook
+            // was the only thing in it: this file exists only to hold the hook,
+            // so leaving `{"hooks":{"UserPromptSubmit":[]}}` behind would drop
+            // a config the user never wrote into their agent's directory. Same
+            // call the uninstall path uses.
+            out.write_json_or_remove(&hooks_path, &hooks_json, Action::Updated);
         }
     }
 

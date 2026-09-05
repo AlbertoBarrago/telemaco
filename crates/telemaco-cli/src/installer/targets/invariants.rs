@@ -616,6 +616,43 @@ fn declining_the_hook_takes_back_an_earlier_one() {
 }
 
 #[test]
+fn declining_the_hook_leaves_no_empty_config_behind() {
+    // Taking the hook back is only half the job. Several targets keep the hook
+    // in a file that exists for nothing else (`.codex/hooks.json`,
+    // `.factory/hooks.json`, antigravity's and windsurf's), and emptying it in
+    // place left `{"hooks":{"UserPromptSubmit":[]}}` sitting in the user's
+    // agent directory: a config file they never wrote, that no longer has
+    // anything to do with Telemaco, and that an uninstall will not find later
+    // because uninstall only removes what still names us.
+    //
+    // A file the installer wrote must therefore either still carry something
+    // of ours, or be gone. Anything the user had in it is a different matter
+    // and is covered by the tests above: `write_json_or_remove` only deletes a
+    // file that prunes down to empty.
+    for &target in TargetId::all() {
+        for &(label, global) in LOCATIONS {
+            let sb = Sandbox::new("nohook_no_shell");
+            let loc = sb.location(global);
+            install_target_in(target, &loc, &opts("telemaco", false), &sb.home);
+            install_target_in(target, &loc, &opts_no_hook("telemaco", false), &sb.home);
+
+            for path in files_under(&sb.root) {
+                let Ok(text) = fs::read_to_string(&path) else { continue };
+                assert!(
+                    text.to_lowercase().contains("telemaco"),
+                    "{} ({}) left {} behind with nothing of ours in it after the \
+                     hook was declined:\n{}",
+                    target.id_str(),
+                    label,
+                    path.display(),
+                    text
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn every_target_keeps_the_line_endings_it_found() {
     // A config checked out with CRLF has to come back with CRLF. Rewriting it
     // to LF makes every line of the file show up in the user's next diff.

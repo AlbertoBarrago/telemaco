@@ -205,8 +205,8 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
                 remove_user_prompt_hook_flat(&mut hooks_json)
             };
             if removed {
-                let action = if hooks_existed { Action::Updated } else { Action::Created };
-                out.write_json(&hooks_path, &hooks_json, action);
+                // Takes the file too when the hook was all it held: see codex.
+                out.write_json_or_remove(&hooks_path, &hooks_json, Action::Updated);
             }
         }
     }

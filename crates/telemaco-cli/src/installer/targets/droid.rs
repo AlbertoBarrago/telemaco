@@ -89,8 +89,13 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
             modified = true;
         }
         if modified {
-            let action = if hooks_existed { Action::Updated } else { Action::Created };
-            out.write_json(&hooks_path, &hooks_json, action);
+            if opts.prompt_hook {
+                let action = if hooks_existed { Action::Updated } else { Action::Created };
+                out.write_json(&hooks_path, &hooks_json, action);
+            } else {
+                // Declined: take the file too when the hook was all it held.
+                out.write_json_or_remove(&hooks_path, &hooks_json, Action::Updated);
+            }
         }
     }
 
