@@ -34,6 +34,14 @@ fork and evolved into a distinct project with its own identity and a
 practical, scraping- and agent-oriented focus. See `NOTICE` for the full
 attribution.
 
+### How Telemaco differs from Obscura
+
+Obscura is a browser engine; Telemaco is a browser engine **for automation**.
+Where Obscura focuses on the rendering core, Telemaco adds the surfaces that
+make it useful in production: a full CDP server for Puppeteer and Playwright, a
+stateful MCP server for AI agents, stealth against bot detection, parallel
+scraping, and a one-command installer that wires it into 15 coding agents.
+
 ## Why Telemaco over headless Chrome?
 
 | Metric       | Telemaco      | Headless Chrome |
