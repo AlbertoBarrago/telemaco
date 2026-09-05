@@ -73,9 +73,8 @@ If no block matches, the command prints `focus: no blocks matched [...]`
 to stderr and emits an empty document — loosen the keywords or raise the
 context window.
 
-Measured on two rendered pages (release build, `--focus-context 1`):
+Measured on a rendered page (release build, `--focus-context 1`):
 
 | Page | Full markdown | Focused | Reduction |
 |---|---|---|---|
-| Salesforce Connect API docs (SPA) | 6553 B | 2352 B | −64% |
 | docs.rs/serde (static) | 9610 B | 2198 B | −77% |

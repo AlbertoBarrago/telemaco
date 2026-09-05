@@ -95,6 +95,14 @@ disposable directory outside the repo. See `AGENTS.md` for the exact harness
 commands and comparison methodology. Never add hostname-specific layout, style,
 or resource behavior. Do not commit generated screenshots or reports.
 
+## Agent installer
+
+`telemaco install` / `telemaco uninstall` wire the MCP server, an instructions
+block and a prompt hook into 15 coding agents
+(`crates/telemaco-cli/src/installer/`). Global by default, or `--folder <dir>`
+for one project or a global install rooted elsewhere. See `AGENTS.md` for the
+per-agent rules and module layout.
+
 ## Conventions
 
 - Performance is a hard constraint (~12x faster, ~6x less memory than headless

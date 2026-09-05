@@ -84,6 +84,153 @@ Do not bulk-run `cargo fmt`: the tree is not rustfmt-clean, so a blanket format
 produces a huge unrelated diff. Match the surrounding style in the files you
 edit instead.
 
+## Agent installer
+
+`telemaco install` (`crates/telemaco-cli/src/installer/`) writes MCP entries,
+instructions blocks and prompt hooks into 15 coding agents; `telemaco
+uninstall` takes the same target/location/folder flags and removes them again.
+Both are thin CLI entry points (`run_installer` / `run_uninstaller` in
+`installer/mod.rs`) over the same per-target `install_target_in` /
+`uninstall_target_in` dispatch, so a target's uninstall logic lives next to its
+install logic in one module, not a separate command. Layout: one module per
+agent under `targets/`, shared helpers in `targets/common.rs`, JSON, TOML and
+YAML editing in `json_utils.rs` / `toml_utils.rs` / `yaml_utils.rs`.
+
+Rules for touching it:
+
+- **`--folder <dir>` is ambiguous on its own**: a project to configure, or the
+  directory a global install should treat as home instead of `$HOME` (an
+  agent whose config root is not the platform default, a second Claude Code
+  build rooted elsewhere, say). Without an explicit `--location`, the
+  installer asks which one is meant rather than guessing; `--location global`
+  or `--location local` answers it without prompting, for scripting.
+  `install_target_in` / `detect_target_in` / `uninstall_target_in` already
+  take an explicit `home: &PathBuf` (`resolve_install_home` in
+  `installer/mod.rs` picks it), so this is the only layer that changed.
+- **Read a target's documented home override through `home_env_var`, never
+  `std::env::var_os` directly.** Six targets move their config root via an
+  env var the real agent reads (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`,
+  `GEMINI_CLI_HOME`, `HERMES_HOME`, `PI_CODING_AGENT_DIR`, `DSH_HOME`), and
+  that var takes priority over the explicit `home` a caller passed in - by
+  design in production, but it means a real one exported in a dev/CI shell
+  used to leak straight through the test suite's isolated `TempDir` and into
+  the developer's actual files. `home_env_var` (`targets/common.rs`) reads a
+  `TELEMACO_TEST_`-prefixed name instead of the real one in a test build, so
+  `cargo test` never sees the ambient real variable at all. A test exercising
+  one of these overrides sets the fake name through the `FakeHomeVar` guard in
+  `targets/mod.rs`'s test module (it serializes access with a `Mutex` and
+  restores the previous value on drop, since env vars are process-global and
+  tests run on multiple threads).
+- **Never replace a config you could not parse.** `read_json_for_update`
+  returns `Err` for malformed or non-object files; the caller records a note
+  and writes nothing. Detection uses the infallible `read_json_file` because it
+  never writes back.
+- **Every write goes through `Outcome`.** It backs the file up on first
+  rewrite, honours `--dry-run`, and records the failure instead of reporting a
+  file as configured. No bare `let _ = write_json_file(...)`.
+- **Hooks use `opts.binary_path`**, never a bare `telemaco`: GUI-launched
+  agents do not inherit the shell PATH.
+- **The prompt-hook heuristic matches whole words**, so `.iter()` and `linker`
+  do not read as web intent. Add markers to the lists in `prompt_hook.rs`, not
+  new `contains()` calls.
+- Entry shapes live in the target module (`mcp_entry`) so `--print-config`
+  cannot drift from what the installer writes.
+- **Rewrites keep the file's line endings.** `str::lines()` drops the `\r`, so
+  every line-level editor works in LF and `text_utils::with_line_ending` puts
+  CRLF back before the write; comparisons that decide "unchanged" normalise
+  first, or a CRLF config is rewritten on every install.
+- **Uninstall follows a symlink the way install does.** A config that is a link
+  into a dotfiles repo is emptied, never unlinked; a file Telemaco created
+  outright takes its target with it.
+- **Detect on files the agent owns, never on shared ones.** `AGENTS.md`,
+  `.agents/` and a bare `CLAUDE.md` belong to the cross-tool conventions, not to
+  any one agent, so `--target auto` must never infer an install from them.
+  `test_generic_agent_files_do_not_detect_specific_agents` holds that line.
+- **Write only what the agent documents reading.** Every path, key and hook
+  shape here comes from that agent's own docs, and they differ in every
+  direction: Codex and Claude Code wrap the event map in `hooks` while Factory
+  Droid's standalone `hooks.json` is keyed directly by event name; Claude Code
+  auto-approves tool *use* through `permissions.allow` and the project server
+  itself through `enabledMcpjsonServers` in `.claude/settings.local.json`, which
+  only applies once the folder's trust dialog is accepted, while Kiro uses the
+  server's own `autoApprove`; a Claude Code project reads `./CLAUDE.md` and
+  `./.claude/CLAUDE.md` both, so write to the one already there; Qwen parses a hook's stdout as JSON where Claude Code, Codex,
+  Droid and Kiro take plain text; Antigravity's customization directory is
+  `.agents/` in a project and `~/.gemini/config/` globally, its injected steps
+  carry `ephemeralMessage`, and its two surfaces read different project
+  instructions - the IDE takes workspace rules from `.agents/rules/`, the CLI
+  parses the project's `AGENTS.md`, so both get written; Poolside reads only
+  `~/.config/poolside/`, parses any non-empty hook stdout as a decision object
+  whose fields are snake_case (`hook_specific_output.additional_context` on
+  `UserPromptSubmit`), and treats exit 2 as the block, so its web guard has to
+  exit 2 while its context hook answers JSON; Windsurf's default agent is Devin Local, which reads
+  the Devin CLI files (`.devin/mcp_config.json`, `~/.config/devin/mcp_config.json`)
+  while `~/.codeium/windsurf/mcp_config.json` is the legacy Cascade path and has
+  no project form at all; that agent also runs `UserPromptSubmit` hooks, from
+  `.devin/hooks.v1.json` where the event map is the whole file and from the
+  `hooks` key of `~/.config/devin/config.json` where it is not, and takes global
+  rules from `~/.devin/rules/*.md`, never from Cascade's memories file; Codex runs hooks by default and `[features] hooks`
+  is the user's off switch, not ours to set; a JSON hook answer echoes the
+  event that fired, since Gemini CLI injects context from `BeforeAgent` and
+  Qwen Code from `UserPromptSubmit`; Gemini CLI's user directory is the
+  `.gemini` inside `$GEMINI_CLI_HOME` when that is set, its context file is
+  `GEMINI.md` only until `context.fileName` (or the older flat
+  `contextFileName`) names another, and it fingerprints project hooks, so one
+  is reviewed again whenever its command changes; Qwen Code keys the same
+  `context.fileName` off `QWEN.md`, reads a project's `AGENTS.md` as well so the
+  block goes there rather than into a second file, and with folder trust
+  enabled ignores an untrusted project's `.qwen/settings.json` outright; Pi's directory is `$PI_CODING_AGENT_DIR`
+  when set, it reads `AGENTS.override.md` in place of `AGENTS.md` exactly as
+  Codex does, and it has no MCP support at all by design, so the instructions
+  block is the whole install; DeepSeek Harness keys everything off `$DSH_HOME`,
+  takes its MCP server as an `insert` patch in the user patch layer
+  (`$DSH_HOME/cordis.patch.yml`, a YAML sequence of patch operations rather
+  than a mapping), and loads a Claude-shaped `hooks.json` only when its
+  `dsh-hooks-claude-code` plugin is pointed at one; Roo Code reads `.roo/rules/` and `~/.roo/rules/`, keeps its global
+  servers in `mcp_settings.json` (not the `cline_mcp_settings.json` it inherited
+  from the fork) under a storage base the `roo-cline.customStoragePath` VS Code
+  setting can move, and is the only one of the pair with a project MCP file;
+  Cline reads `.clinerules/` in a project and both `~/.cline/rules/` and
+  `~/Documents/Cline/Rules` globally, keys a rule by its file stem so the same
+  name in two directories is one rule, and takes its servers from
+  `~/.cline/data/settings/cline_mcp_settings.json` for the CLI and SDK - the
+  `~/.cline/mcp.json` its MCP page still names is read by nothing - while its
+  hooks are TypeScript `AgentPlugin` modules, so there is no shell hook to
+  register; Kiro loads
+  hooks from a project's `.kiro/hooks/` and nowhere else, names its triggers in
+  PascalCase (`UserPromptSubmit`, `PostFileSave`), and passes the prompt in the
+  `USER_PROMPT` environment variable instead of the stdin payload, which
+  `prompt-hook` falls back to; a hook that exits non-zero blocks the prompt
+  there, so ours must exit 0 whether or not it has anything to inject; Codex's home is
+  `$CODEX_HOME` when set, it reads `AGENTS.override.md` in place of `AGENTS.md`
+  wherever one exists, and a project's `.codex/` layer loads only once the
+  project is trusted; Hermes Agent keeps its MCP servers and its shell hooks in one
+  `~/.hermes/config.yaml` (or `$HERMES_HOME`), injects context from
+  `pre_llm_call` answered with `{"context": ...}`, and picks a project's
+  instructions from the first of `.hermes.md`, `AGENTS.md`, `CLAUDE.md`,
+  `.cursorrules` that exists, so only that one is worth writing;
+  Cursor takes an always-applied `.mdc` rule in a project but
+  has no global rules file at all - User Rules live in its Customize panel - so
+  a global install goes through `~/.cursor/hooks.json`, whose `sessionStart`
+  returns `additional_context` (`beforeSubmitPrompt` only returns
+  `continue`/`user_message`, so it can block a prompt but never add to one), and OpenCode's plugin hooks
+  (`tool.execute.before`, `shell.env`) have no prompt-submit equivalent, so it
+  gets the instructions block only. Check the docs before adding a target or changing
+  a shape: an invented key is silently ignored, which looks exactly like a
+  working install.
+
+- **Every rule above holds for all fifteen targets, not just the one it was
+  written for.** `targets/invariants.rs` runs each rule (round-trips to
+  nothing, stays inside its location, is idempotent, dry-run matches the real
+  write, follows the binary, keeps line endings, never orphans a symlink or
+  evicts a file it found there, never drops a user's key) over
+  `TargetId::all()` in both locations. Add a target there first, fix second.
+- **Detection, install and uninstall come from one table.** `ops_for` in
+  `targets/mod.rs` holds the three functions per target in a single row, so a
+  target is always wired into all three together.
+
+Tests: `cargo test -p telemaco-cli --no-default-features --bin telemaco installer`.
+
 ## Architecture
 
 - **telemaco-cli** — CLI: `fetch` (`--dump assets|html|text|links|markdown|original|cookies`, `--eval <JS>`, `--screenshot <PNG>`), `serve` (CDP server), `scrape`, `mcp`. `--proxy`, `--stealth`, and `--allow-private-network` are global flags: valid before or after the subcommand and applied to `fetch`, `serve`, `scrape`, and `mcp` (a `scrape` run forwards `--stealth` to each worker via `TELEMACO_STEALTH`).

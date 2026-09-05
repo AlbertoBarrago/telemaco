@@ -1,28 +1,30 @@
 #!/usr/bin/env bash
-# Install telemaco, then optionally register it as an MCP server with the
-# AI agents found on this machine.
+# Install telemaco and add it to your PATH.
 #
-#   ./install.sh                  interactive
-#   ./install.sh --yes            accept every default, register nothing
-#   ./install.sh --prefix ~/bin   install somewhere else
-#   ./install.sh --from-source    skip the release download and build locally
+#   ./install.sh                  install to ~/.local/bin
+#   ./install.sh --yes            answer yes to every prompt
+#   ./install.sh --prefix ~/bin   install to custom directory
+#   ./install.sh --from-source    build locally with cargo instead of downloading
+#   ./install.sh --uninstall      remove telemaco from the install prefix
 #
-# Nothing is written outside the install prefix and the agent config files you
-# explicitly approve. Every config touched is backed up first.
+# Once installed, configure your AI coding assistants with:
+#   telemaco install
+#   telemaco install --folder /path/to/project
 set -uo pipefail
 
 REPO="AlbertoBarrago/telemaco"
 PREFIX="${PREFIX:-$HOME/.local/bin}"
 ASSUME_YES=0
 FROM_SOURCE=0
+UNINSTALL=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes|-y)      ASSUME_YES=1; shift ;;
     --prefix)      PREFIX="$2"; shift 2 ;;
+    --prefix=*)    PREFIX="${1#*=}"; shift ;;
+    --uninstall)   UNINSTALL=1; shift ;;
     --from-source) FROM_SOURCE=1; shift ;;
-    # Print the header comment, whatever its length, rather than a line range
-    # that silently drifts as the file is edited.
     -h|--help)     awk 'NR>1 && /^#/ { sub(/^# ?/, ""); print; next } NR>1 { exit }' "$0"; exit 0 ;;
     *)             echo "unknown option: $1" >&2; exit 2 ;;
   esac
@@ -34,13 +36,29 @@ warn()  { printf '  \033[33m%s\033[0m\n' "$*"; }
 die()   { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 ask() {
-  # ask "question" -> 0 for yes. Defaults to no when not a terminal.
-  [[ $ASSUME_YES -eq 1 ]] && return 1
-  [[ -t 0 ]] || return 1
+  # ask "question" -> 0 for yes. Defaults to no when there is nobody to ask.
+  # --yes answers yes: it used to answer no, which made --yes --uninstall
+  # print "aborted" and remove nothing.
+  [[ $ASSUME_YES -eq 1 ]] && return 0
+  # The prompt reads from /dev/tty, so that is what has to be testable. Testing
+  # stdin instead silently answered no to everything under `curl ... | bash`,
+  # the way most people run this.
+  [[ -r /dev/tty ]] || return 1
   local reply
   read -r -p "  $1 [y/N] " reply </dev/tty || return 1
   [[ "$reply" =~ ^[YySs] ]]
 }
+
+if [[ $UNINSTALL -eq 1 ]]; then
+  bold "Uninstalling telemaco"
+  if ! ask "Remove telemaco from $PREFIX?"; then
+    echo "aborted"; exit 0
+  fi
+  rm -f "$PREFIX/telemaco" "$PREFIX/telemaco-worker"
+  ok "Removed telemaco from $PREFIX"
+  echo "  Note: To remove agent configurations, run: telemaco uninstall"
+  exit 0
+fi
 
 # ---------------------------------------------------------------- platform ---
 
@@ -59,6 +77,14 @@ ASSET="telemaco-${ARCH}-${OS}.tar.gz"
 # ------------------------------------------------------------------ install ---
 
 bold "Installing telemaco"
+
+# Test hook: when TELEMACO_TEST_BIN points at an existing executable, skip
+# the release download and source build and install that binary instead.
+if [[ -n "${TELEMACO_TEST_BIN:-}" && -x "$TELEMACO_TEST_BIN" ]]; then
+  mkdir -p "$PREFIX"
+  install -m 0755 "$TELEMACO_TEST_BIN" "$PREFIX/telemaco"
+  ok "installed test binary"
+else
 
 install_from_source() {
   command -v cargo >/dev/null || die "cargo not found. Install Rust from https://rustup.rs"
@@ -80,12 +106,6 @@ install_from_source() {
 }
 
 install_from_release() {
-  # Returns non-zero when no published release carries our asset, so the caller
-  # can fall back to a source build instead of failing outright.
-  #
-  # Three ways in, because the obvious one does not always work: the public
-  # /releases/latest/download/ URL 404s on a PRIVATE repository even with a
-  # token, so a private checkout needs the gh CLI or the API asset endpoint.
   local tmp; tmp="$(mktemp -d)"
   local got=1
 
@@ -139,126 +159,67 @@ else
   warn "no published release carries $ASSET yet"
   install_from_source
 fi
+fi
 
 BIN="$PREFIX/telemaco"
 [[ -x "$BIN" ]] || die "install failed: $BIN is missing"
 ok "$("$BIN" --version) -> $BIN"
 
-case ":$PATH:" in
-  *":$PREFIX:"*) ;;
-  *) warn "$PREFIX is not on your PATH. Add: export PATH=\"$PREFIX:\$PATH\"" ;;
-esac
+# --------------------------------------------------------------------- PATH ---
 
-# ---------------------------------------------------------------------- MCP ---
-
-printf '\n'
-bold "MCP registration"
-echo "  telemaco can act as an MCP server, giving an agent a real browser:"
-echo "  navigate, click, fill forms, read pages as Markdown, screenshot, PDF."
-
-# Merge {"mcpServers": {"telemaco": {...}}} into a JSON file, preserving the
-# rest of it. Refuses rather than guesses when the file is not valid JSON,
-# because these files hold the user's other servers.
-merge_json_config() {
-  local file="$1" key="${2:-mcpServers}"
-  python3 - "$file" "$BIN" "$key" <<'PY'
-import json, os, shutil, sys
-path, binary, key = sys.argv[1], sys.argv[2], sys.argv[3]
-data = {}
-if os.path.exists(path) and os.path.getsize(path) > 0:
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        print(f"    not valid JSON ({e}); leaving it alone", file=sys.stderr)
-        sys.exit(3)
-    if not isinstance(data, dict):
-        print("    top level is not an object; leaving it alone", file=sys.stderr)
-        sys.exit(3)
-    shutil.copy2(path, path + ".telemaco-backup")
-servers = data.setdefault(key, {})
-if not isinstance(servers, dict):
-    print(f"    '{key}' is not an object; leaving it alone", file=sys.stderr)
-    sys.exit(3)
-if servers.get("telemaco", {}).get("command") == binary:
-    print("    already registered, nothing to do")
-    sys.exit(4)
-servers["telemaco"] = {"command": binary, "args": ["mcp"]}
-os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-tmp = path + ".telemaco-tmp"
-with open(tmp, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
-os.replace(tmp, path)
-PY
-}
-
-register() {
-  local label="$1" file="$2" key="${3:-mcpServers}"
-  local out rc
-  out="$(merge_json_config "$file" "$key" 2>&1)"; rc=$?
-  case $rc in
-    0) ok "$label: registered"
-       [[ -f "$file.telemaco-backup" ]] && printf '    backup: %s\n' "$file.telemaco-backup" ;;
-    4) ok "$label: $out" ;;
-    *) warn "$label: not changed"; [[ -n "$out" ]] && printf '%s\n' "$out" ;;
+add_to_path() {
+  local prefix="$1"
+  case ":$PATH:" in
+    *":$prefix:"*) return 0 ;;
   esac
-}
 
-FOUND=0
+  local shell_rc=""
+  local shell_name
+  shell_name="$(basename "${SHELL:-bash}")"
+  case "$shell_name" in
+    zsh)  shell_rc="$HOME/.zshrc" ;;
+    bash) [[ -f "$HOME/.bash_profile" ]] && shell_rc="$HOME/.bash_profile" || shell_rc="$HOME/.bashrc" ;;
+    fish) shell_rc="$HOME/.config/fish/config.fish" ;;
+    *)    shell_rc="$HOME/.profile" ;;
+  esac
 
-# Claude Code ships a CLI that owns its own config; prefer it over file surgery.
-if command -v claude >/dev/null; then
-  FOUND=1
-  if ask "Register with Claude Code?"; then
-    if claude mcp list 2>/dev/null | grep -q '^telemaco'; then
-      ok "Claude Code: already registered"
-    elif claude mcp add telemaco -- "$BIN" mcp >/dev/null 2>&1; then
-      ok "Claude Code: registered"
-    else
-      warn "Claude Code: 'claude mcp add' failed; add it by hand with:"
-      printf '    claude mcp add telemaco -- %s mcp\n' "$BIN"
+  if [[ -n "$shell_rc" ]]; then
+    local line="export PATH=\"$prefix:\$PATH\""
+    if [[ "$shell_name" == "fish" ]]; then
+      line="fish_add_path $prefix"
+    fi
+    if grep -qF -- "$prefix" "$shell_rc" 2>/dev/null; then
+      # Already on file: the current shell just has not read it yet. Saying
+      # "not on your PATH, add this line" here was plain wrong.
+      ok "$prefix is already in $shell_rc; open a new shell to pick it up"
+      return 0
+    fi
+    if ask "Add $prefix to PATH in $shell_rc?"; then
+      echo "" >> "$shell_rc"
+      echo "# Telemaco CLI" >> "$shell_rc"
+      echo "$line" >> "$shell_rc"
+      ok "Added $prefix to $shell_rc"
+      export PATH="$prefix:$PATH"
+      return 0
     fi
   fi
-fi
+  warn "$prefix is not on your PATH. Add to your shell profile:"
+  printf '    export PATH="%s:$PATH"\n' "$prefix"
+}
 
-if [[ "$OS" == macos ]]; then
-  CLAUDE_DESKTOP="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
-else
-  CLAUDE_DESKTOP="$HOME/.config/Claude/claude_desktop_config.json"
-fi
-if [[ -d "$(dirname "$CLAUDE_DESKTOP")" ]]; then
-  FOUND=1
-  ask "Register with Claude Desktop?" && register "Claude Desktop" "$CLAUDE_DESKTOP"
-fi
+add_to_path "$PREFIX"
 
-if [[ -d "$HOME/.cursor" ]]; then
-  FOUND=1
-  ask "Register with Cursor?" && register "Cursor" "$HOME/.cursor/mcp.json"
-fi
-
-if [[ -d "$HOME/.codeium/windsurf" ]]; then
-  FOUND=1
-  ask "Register with Windsurf?" && register "Windsurf" "$HOME/.codeium/windsurf/mcp_config.json"
-fi
-
-# Zed's settings.json accepts comments, and rewriting it as strict JSON would
-# silently delete them. Print the snippet instead of editing the file.
-ZED="$HOME/.config/zed/settings.json"
-if [[ -f "$ZED" ]]; then
-  FOUND=1
-  if ask "Show the Zed snippet? (its settings file allows comments, so this one is manual)"; then
-    printf '    add to %s:\n\n' "$ZED"
-    printf '      "context_servers": {\n'
-    printf '        "telemaco": { "command": { "path": "%s", "args": ["mcp"] } }\n' "$BIN"
-    printf '      }\n\n'
-  fi
-fi
-
-[[ $FOUND -eq 0 ]] && warn "no supported agent detected; telemaco is installed and usable from the CLI"
+# ----------------------------------------------------------------- Next step ---
 
 printf '\n'
-bold "Done"
-printf '  Try it:  %s fetch https://example.com --dump markdown\n' "${BIN##*/}"
-printf '  MCP:     %s mcp        (stdio)\n' "${BIN##*/}"
-printf '  Restart any agent you just registered so it picks up the server.\n'
+bold "✨ Telemaco installed successfully!"
+echo "  Binary: $BIN"
+echo ""
+echo "🤖 Next step: Configure your AI coding assistants"
+echo "  Run the interactive installer to set up MCP servers, memory files, and hooks:"
+echo ""
+echo "    telemaco install"
+echo ""
+echo "  Or configure a specific project directory:"
+echo "    telemaco install --folder /path/to/project"
+echo ""

@@ -1,4 +1,5 @@
 mod focus;
+mod installer;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -223,6 +224,85 @@ enum Command {
 
         #[arg(long)]
         user_agent: Option<String>,
+    },
+
+    /// Install Telemaco MCP server and agent directives into AI coding assistants
+    Install {
+        /// Target agent(s): comma-separated IDs (e.g. "claude,cursor"), or "auto", "all", "none"
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Install location: "global" or "local"
+        #[arg(short, long)]
+        location: Option<installer::targets::LocationArg>,
+
+        /// Target folder/directory to inspect and configure (e.g. --folder /path/to/project).
+        /// Prompts whether to treat it as a project or as the home directory
+        /// for a global install (e.g. a Claude Code build whose config root
+        /// isn't ~/.claude); pass --location to answer that without asking.
+        #[arg(short, long, alias = "dir")]
+        folder: Option<std::path::PathBuf>,
+
+        /// Non-interactive: accept defaults (auto-detect agents, global scope)
+        #[arg(short, long)]
+        yes: bool,
+
+        /// Enable stealth mode by default in the agent's MCP configuration
+        #[arg(long)]
+        stealth: bool,
+
+        /// Skip auto-allow permissions in Claude Code settings
+        #[arg(long)]
+        no_permissions: bool,
+
+        /// Print MCP config snippet for the named agent and exit
+        #[arg(long)]
+        print_config: Option<String>,
+
+        /// Leave the agent's own web search/fetch tools enabled. Only Claude
+        /// Code and Poolside document a hook that can refuse a tool call, so
+        /// the other agents are steered by the instructions block alone
+        #[arg(long)]
+        no_block_web: bool,
+
+        /// Report what would change without writing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Remove Telemaco from configured coding agents
+    Uninstall {
+        /// Target agent(s): comma-separated IDs (e.g. "claude,cursor"), or "auto", "all", "none"
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Location to remove from: "global" or "local"
+        #[arg(short, long)]
+        location: Option<installer::targets::LocationArg>,
+
+        /// Target folder/directory to remove from (e.g. --folder /path/to/project).
+        /// Prompts whether it was a project or the home directory of a global
+        /// install; pass --location to answer that without asking.
+        #[arg(short, long, alias = "dir")]
+        folder: Option<std::path::PathBuf>,
+
+        /// Non-interactive: accept defaults (remove from every detected agent)
+        #[arg(short, long)]
+        yes: bool,
+
+        /// Report what would be removed without writing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Claude Code UserPromptSubmit hook: injects Telemaco directive on web-related prompts
+    #[command(name = "prompt-hook", hide = true)]
+    PromptHook {
+        /// How the calling agent reads stdout: plain `text`, `json` for the
+        /// agents that parse it (Qwen Code, Gemini CLI), or `cursor` for
+        /// Cursor's `sessionStart`, which reads `additional_context`.
+        #[arg(long, default_value = "text")]
+        format: String,
     },
 }
 
@@ -556,6 +636,58 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 telemaco_mcp::run(mcp_proxy, user_agent, stealth, limits).await?;
             }
+        }
+        Some(Command::Install {
+            target,
+            location,
+            folder,
+            yes,
+            stealth: install_stealth,
+            no_permissions,
+            print_config,
+            no_block_web,
+            dry_run,
+        }) => {
+            installer::run_installer(installer::InstallCliArgs {
+                target,
+                location,
+                folder,
+                yes,
+                stealth: install_stealth || stealth,
+                no_permissions,
+                print_config,
+                no_block_web,
+                dry_run,
+            })?;
+        }
+        Some(Command::Uninstall {
+            target,
+            location,
+            folder,
+            yes,
+            dry_run,
+        }) => {
+            installer::run_uninstaller(installer::InstallCliArgs {
+                target,
+                location,
+                folder,
+                yes,
+                stealth: false,
+                no_permissions: false,
+                print_config: None,
+                no_block_web: false,
+                dry_run,
+            })?;
+        }
+        Some(Command::PromptHook { format }) => {
+            let format = installer::prompt_hook::OutputFormat::parse(&format)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Unknown --format '{}'; use text, json, cursor, hermes or poolside",
+                        format
+                    )
+                })?;
+            installer::prompt_hook::run_prompt_hook(format)?;
         }
         None => {
             print_banner(args.port);
@@ -2326,20 +2458,6 @@ mod tests {
             retention_needle
         );
         (full_text.len(), focused_text.len())
-    }
-
-    // Salesforce docs are a heavy JS-rendered SPA with cookie-banner noise.
-    // Known-good content lives under <main id="maincontent">.
-    #[tokio::test(flavor = "current_thread")]
-    #[ignore = "requires network and full render"]
-    async fn salesforce_focus_reduces_and_retains() {
-        let (full, focused) = focused_vs_full(
-            "https://developer.salesforce.com/docs/atlas.en-us.chatterapi.meta/chatterapi/intro_what_is_chatter_connect.htm",
-            &["rate limit", "503"],
-            "503 Service Unavailable",
-        )
-        .await;
-        println!("salesforce: full {} bytes -> focused {} bytes", full, focused);
     }
 
     // Static docs site with dense boilerplate: a keyword about the API
