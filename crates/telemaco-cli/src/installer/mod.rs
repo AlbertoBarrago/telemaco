@@ -27,6 +27,7 @@ pub struct InstallCliArgs {
     pub no_permissions: bool,
     pub print_config: Option<String>,
     pub no_block_web: bool,
+    pub no_prompt_hook: bool,
     pub dry_run: bool,
 }
 
@@ -386,7 +387,9 @@ pub fn run_installer(args: InstallCliArgs) -> Result<()> {
     //    asked for rather than assumed. Declining still leaves the MCP server
     //    and the instructions block, which is the bulk of what the installer
     //    does.
-    let prompt_hook = if !is_interactive {
+    let prompt_hook = if args.no_prompt_hook {
+        false
+    } else if !is_interactive {
         true
     } else {
         match Confirm::new("Install the prompt hook? (Runs on every prompt; adds a note when one looks web-bound)")
@@ -463,6 +466,13 @@ pub fn run_installer(args: InstallCliArgs) -> Result<()> {
         println!(
             "⚠  The agent's own web search/fetch will be refused so it goes through Telemaco.\n\
              \x20  Re-run with --no-block-web to leave them enabled, or `telemaco uninstall` to undo."
+        );
+        println!();
+    }
+    if !is_interactive && prompt_hook {
+        println!(
+            "ℹ  A prompt hook will run on every prompt the agent receives.\n\
+             \x20  Re-run with --no-prompt-hook to skip it."
         );
         println!();
     }

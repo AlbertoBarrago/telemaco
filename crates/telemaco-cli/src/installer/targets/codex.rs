@@ -158,6 +158,11 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         if opts.prompt_hook && add_user_prompt_hook(&mut hooks_json, &prompt_hook_command(&opts.binary_path)) {
             let action = if hooks_existed { Action::Updated } else { Action::Created };
             out.write_json(&hooks_path, &hooks_json, action);
+        } else if !opts.prompt_hook && remove_user_prompt_hook(&mut hooks_json) {
+            // Reinstalling with the hook declined takes back the one an
+            // earlier install added.
+            let action = if hooks_existed { Action::Updated } else { Action::Created };
+            out.write_json(&hooks_path, &hooks_json, action);
         }
     }
 

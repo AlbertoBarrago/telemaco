@@ -157,6 +157,10 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         // (QwenLM/qwen-code docs/users/features/hooks.md).
         if opts.prompt_hook && add_user_prompt_hook(&mut settings_json, &prompt_hook_command_json(&opts.binary_path)) {
             modified = true;
+        } else if !opts.prompt_hook && remove_user_prompt_hook(&mut settings_json) {
+            // Reinstalling with the hook declined takes back the one an
+            // earlier install added.
+            modified = true;
         }
 
         if modified {

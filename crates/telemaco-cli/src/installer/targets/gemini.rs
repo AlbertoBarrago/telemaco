@@ -148,6 +148,12 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
             )
         {
             modified = true;
+        } else if !opts.prompt_hook
+            && remove_prompt_hook_for_event(&mut settings_json, "BeforeAgent")
+        {
+            // Reinstalling with the hook declined takes back the one an
+            // earlier install added.
+            modified = true;
         }
 
         if modified {

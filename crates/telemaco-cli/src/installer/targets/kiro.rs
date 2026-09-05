@@ -133,7 +133,11 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
     // documents no user-level hooks directory (kiro.dev/docs/hooks): a global
     // install gets the directive through the steering file instead.
     if !opts.prompt_hook {
-        // Declined: the steering file still carries the instructions.
+        // Declined: the steering file still carries the instructions. Take
+        // back the dedicated hook file an earlier install wrote.
+        if hooks_path.exists() {
+            out.remove_config_file(&hooks_path, "");
+        }
     } else if loc.is_global() {
         out.note(
             "Kiro reads hooks from a project's .kiro/hooks/ only, so no global prompt hook \

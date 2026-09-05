@@ -156,6 +156,19 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
             let action = if hooks_existed { Action::Updated } else { Action::Created };
             out.write_json(&hooks_path, &hooks_json, action);
         }
+    } else if !opts.prompt_hook {
+        // Reinstalling with the hook declined takes back the one an earlier
+        // install added.
+        if let Some(mut hooks_json) = out.load_json(&hooks_path) {
+            let removed = hooks_json
+                .as_object_mut()
+                .map(|obj| obj.remove("telemaco").is_some())
+                .unwrap_or(false);
+            if removed {
+                let action = if hooks_existed { Action::Updated } else { Action::Created };
+                out.write_json(&hooks_path, &hooks_json, action);
+            }
+        }
     }
 
     // 3. Instructions.

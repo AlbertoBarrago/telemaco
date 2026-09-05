@@ -359,6 +359,10 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         // Register UserPromptSubmit hook
         if opts.prompt_hook && add_user_prompt_hook(&mut settings_json, &prompt_hook_command(&opts.binary_path)) {
             modified = true;
+        } else if !opts.prompt_hook && remove_user_prompt_hook(&mut settings_json) {
+            // Reinstalling with the hook declined takes back the one an
+            // earlier install added.
+            modified = true;
         }
 
         // PreToolUse guard on the agent's own web tools

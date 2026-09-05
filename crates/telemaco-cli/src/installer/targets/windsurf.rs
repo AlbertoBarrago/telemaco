@@ -195,6 +195,20 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         } else {
             out.push(FileResult { path: hooks_path, action: Action::Unchanged });
         }
+    } else if !opts.prompt_hook {
+        // Reinstalling with the hook declined takes back the one an earlier
+        // install added.
+        if let Some(mut hooks_json) = out.load_json(&hooks_path) {
+            let removed = if wrapped {
+                remove_user_prompt_hook(&mut hooks_json)
+            } else {
+                remove_user_prompt_hook_flat(&mut hooks_json)
+            };
+            if removed {
+                let action = if hooks_existed { Action::Updated } else { Action::Created };
+                out.write_json(&hooks_path, &hooks_json, action);
+            }
+        }
     }
 
     match loc {

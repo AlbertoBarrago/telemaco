@@ -285,6 +285,11 @@ enum Command {
         #[arg(long)]
         no_block_web: bool,
 
+        /// Skip installing the prompt hook (runs on every prompt the agent
+        /// receives). The MCP server and the instructions block still install.
+        #[arg(long)]
+        no_prompt_hook: bool,
+
         /// Report what would change without writing anything
         #[arg(long)]
         dry_run: bool,
@@ -681,6 +686,7 @@ async fn main() -> anyhow::Result<()> {
             no_permissions,
             print_config,
             no_block_web,
+            no_prompt_hook,
             dry_run,
         }) => {
             installer::run_installer(installer::InstallCliArgs {
@@ -692,6 +698,7 @@ async fn main() -> anyhow::Result<()> {
                 no_permissions,
                 print_config,
                 no_block_web,
+                no_prompt_hook,
                 dry_run,
             })?;
         }
@@ -711,6 +718,7 @@ async fn main() -> anyhow::Result<()> {
                 no_permissions: false,
                 print_config: None,
                 no_block_web: false,
+                no_prompt_hook: false,
                 dry_run,
             })?;
         }

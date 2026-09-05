@@ -116,11 +116,13 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
         let hook = hook_item(&opts.binary_path);
 
         if !cfg.exists() {
-            let content = format!(
-                "mcp_servers:\n{}\n\nhooks:\n  pre_llm_call:\n{}\n",
-                indent_block(&mcp_entry, 2),
-                indent_block(&hook, 4)
-            );
+            let mut content = format!("mcp_servers:\n{}\n", indent_block(&mcp_entry, 2));
+            if opts.prompt_hook {
+                content.push_str(&format!(
+                    "\nhooks:\n  pre_llm_call:\n{}\n",
+                    indent_block(&hook, 4)
+                ));
+            }
             out.write_text(&cfg, &content, Action::Created);
         } else if let Some(original) = out.load_text(&cfg) {
             let mut content = original.clone();
@@ -145,21 +147,27 @@ pub fn install(loc: &Location, opts: &TargetInstallOptions, home: &PathBuf) -> T
             }
 
             // Our hook is replaced rather than skipped, so a moved binary is
-            // followed the way every other target follows it.
+            // followed the way every other target follows it. Declining the
+            // hook takes back the one an earlier install added.
             let (without, removed) = remove_yaml_block(&content, |l| {
                 l.trim().starts_with("- command:") && is_telemaco_hook_command(l)
             });
             if removed {
                 content = without;
             }
-            match upsert_yaml_path(&content, &["hooks", "pre_llm_call"], &hook) {
-                Ok(updated) => {
-                    if updated != content {
-                        content = updated;
-                        modified = true;
+            if opts.prompt_hook {
+                match upsert_yaml_path(&content, &["hooks", "pre_llm_call"], &hook) {
+                    Ok(updated) => {
+                        if updated != content {
+                            content = updated;
+                            modified = true;
+                        }
                     }
+                    Err(e) => out.note(format!("{}: {}", cfg.display(), e)),
                 }
-                Err(e) => out.note(format!("{}: {}", cfg.display(), e)),
+            } else if removed {
+                content = prune_empty_yaml_keys(&content, &["hooks", "pre_llm_call"]);
+                modified = true;
             }
 
             if modified {

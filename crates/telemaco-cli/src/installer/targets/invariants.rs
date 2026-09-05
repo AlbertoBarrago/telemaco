@@ -71,6 +71,15 @@ fn opts(binary: &str, dry_run: bool) -> TargetInstallOptions {
     }
 }
 
+/// Same as `opts` but with the prompt hook declined, the way `--no-prompt-hook`
+/// or answering "no" to the prompt leaves it.
+fn opts_no_hook(binary: &str, dry_run: bool) -> TargetInstallOptions {
+    TargetInstallOptions {
+        prompt_hook: false,
+        ..opts(binary, dry_run)
+    }
+}
+
 /// Every regular file under `dir`, symlinks included, backups excluded: a
 /// backup is a deliberate leftover, everything else has to be accounted for.
 fn files_under(dir: &Path) -> Vec<PathBuf> {
@@ -543,6 +552,59 @@ fn every_target_follows_the_binary_when_it_moves() {
                 assert!(
                     !text.contains("/old/place/telemaco"),
                     "{} ({}) left {} pointing at the old binary:\n{}",
+                    target.id_str(),
+                    label,
+                    path.display(),
+                    text
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn no_target_writes_a_prompt_hook_when_declined() {
+    // `--no-prompt-hook` (or answering "no") must leave every agent without a
+    // prompt hook. The MCP server and instructions block still install, so the
+    // check is that no written file names the hook command.
+    for &target in TargetId::all() {
+        for &(label, global) in LOCATIONS {
+            let sb = Sandbox::new("nohook");
+            let loc = sb.location(global);
+            install_target_in(target, &loc, &opts_no_hook("telemaco", false), &sb.home);
+
+            for path in files_under(&sb.root) {
+                let Ok(text) = fs::read_to_string(&path) else { continue };
+                assert!(
+                    !text.contains("prompt-hook"),
+                    "{} ({}) wrote a prompt hook into {} despite it being declined:\n{}",
+                    target.id_str(),
+                    label,
+                    path.display(),
+                    text
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn declining_the_hook_takes_back_an_earlier_one() {
+    // Reinstalling with the hook declined has to remove the hook an earlier
+    // install added, the same way declining the web guard does. Otherwise the
+    // opt-out is a lie: the hook keeps running on every prompt.
+    for &target in TargetId::all() {
+        for &(label, global) in LOCATIONS {
+            let sb = Sandbox::new("nohook_takeback");
+            let loc = sb.location(global);
+            install_target_in(target, &loc, &opts("telemaco", false), &sb.home);
+            install_target_in(target, &loc, &opts_no_hook("telemaco", false), &sb.home);
+
+            for path in files_under(&sb.root) {
+                let Ok(text) = fs::read_to_string(&path) else { continue };
+                assert!(
+                    !text.contains("prompt-hook"),
+                    "{} ({}) kept a prompt hook in {} after a reinstall that declined it:\n{}",
                     target.id_str(),
                     label,
                     path.display(),
