@@ -57,29 +57,19 @@ framework pages, with the same CDP automation surface.
 
 ## Install
 
-### Installer script
-
-Downloads the right release archive for this machine, then offers to register
-telemaco as an MCP server with the AI agents it finds:
+### install.sh (recommended)
 
 ```bash
-git clone https://github.com/AlbertoBarrago/telemaco.git && cd telemaco
-./install.sh
+curl -fsSL https://raw.githubusercontent.com/AlbertoBarrago/telemaco/main/install.sh | bash
 ```
 
-It asks before touching anything, one agent at a time, and backs up every
-config it edits. `--yes` accepts the defaults and registers nothing; `--prefix`
-installs somewhere other than `~/.local/bin`; `--from-source` builds locally
-instead of downloading.
-
-Claude Code is registered through `claude mcp add`, its own CLI. Claude
-Desktop, Cursor, and Windsurf are merged into their JSON config, leaving other
-servers and unrelated keys untouched; a config that does not parse is left
-alone rather than rewritten. Zed only gets a printed snippet, because its
-settings file accepts comments and rewriting it as strict JSON would delete
-them.
-
-Re-running changes nothing once telemaco is registered.
+Installs the prebuilt binary for your platform (or builds from source if none
+is published yet), adds it to your `PATH`, then offers to run `telemaco
+install` to configure your AI coding agents. Options: `--prefix <dir>`,
+`--from-source`, `--yes`, `--uninstall` (removes the binary only; run `telemaco
+uninstall` first to also remove agent configs). See
+[Agent setup](#agent-setup-telemaco-install) below for `telemaco install` /
+`telemaco uninstall`.
 
 ### Updating
 
@@ -334,6 +324,52 @@ Tools: `browser_navigate`, `browser_snapshot`, `browser_screenshot`,
 `browser_wait_for`, `browser_network_requests`, `browser_console_messages`,
 `browser_close`. Render-enabled builds expose `browser_screenshot` and
 `browser_pdf`; streaming screencasts remain CDP-only.
+
+## Agent setup (`telemaco install`)
+
+`telemaco install` wires Telemaco into the coding agents on the machine: the
+MCP server, an instructions block in the agent's memory file, and a prompt hook
+that reminds the model to use Telemaco when a prompt looks web-bound.
+
+```bash
+telemaco install                                     # interactive, detects installed agents
+telemaco install --yes                               # non-interactive, accepts the defaults
+telemaco install --folder ./my-project               # configure one project directory
+telemaco install --folder ~/alt-home -l global        # use that folder as home for a global install
+telemaco install --target claude,cursor              # pick agents explicitly
+telemaco install --dry-run                           # show what would change, write nothing
+telemaco uninstall                                    # remove everything a global install added
+telemaco uninstall --folder ./my-project              # remove it from one project directory
+```
+
+Supported: Claude Code, Cursor, OpenAI Codex, Gemini CLI, Google Antigravity,
+Windsurf, OpenCode, Roo Code / Cline, Pi, DeepSeek Harness, Qwen Code, Factory
+Droid, Poolside, Kiro.
+
+| Flag | Description |
+|------|-------------|
+| `-t`, `--target` | Comma-separated agent ids, or `auto`, `all`, `none` |
+| `-l`, `--location` | `global` (default) or `local` |
+| `-f`, `--folder` | A project directory, or the home directory for a global install rooted elsewhere; asks which one when `--location` does not say |
+| `-y`, `--yes` | Non-interactive, accept defaults |
+| `--stealth` | Put `--stealth` in the agent's MCP command |
+| `--no-permissions` | Do not auto-approve Telemaco tools |
+| `--no-block-web` | Leave the agent's own web search/fetch enabled |
+| `--dry-run` | Report the plan without writing |
+| `--print-config <agent>` | Print the MCP snippet for one agent and exit |
+
+`telemaco uninstall` takes the same `-t`/`-l`/`-f`/`-y`/`--dry-run` flags and
+removes Telemaco from the agent configs instead of adding it.
+
+By default the installer adds a guard that refuses the agent's built-in web
+search and fetch, so web work goes through Telemaco. Decline it interactively
+or pass `--no-block-web`; re-running with that flag removes a guard installed
+earlier.
+
+Every config file is copied to `<file>.telemaco-backup` before the first
+rewrite. A config that is not valid JSON is reported and left untouched rather
+than replaced; one that uses comments (`.vscode/mcp.json` and friends) is
+rewritten as strict JSON, and the note says so.
 
 ## CLI reference
 

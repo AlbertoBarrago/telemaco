@@ -35,6 +35,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 # Already in the tree via telemaco-net; used directly here for `telemaco update`.
 reqwest = { workspace = true }
+inquire = "0.7"
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
