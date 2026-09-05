@@ -417,6 +417,59 @@ impl TelemacoJsRuntime {
         Some(context)
     }
 
+    /// Copies deno_core's per-context bookkeeping from the main context onto a
+    /// realm we built ourselves.
+    ///
+    /// deno_core installs isolate-wide callbacks, and they resolve their state
+    /// from whatever context happens to be current. `promise_reject_callback`
+    /// reads a `ContextState` pointer out of an embedder data slot with a
+    /// "valid and set during realm creation" safety comment: it assumes every
+    /// context in the isolate is one deno_core created. Ours is not. A promise
+    /// rejected with no handler inside a frame realm therefore made it read a
+    /// null slot and dereference it, segfaulting the process, which is what
+    /// real pages do constantly through third-party frames (reproduced on
+    /// cursor.com, EXC_BAD_ACCESS at 0xfffffffffffffff0, the refcount field of
+    /// a null `Rc`).
+    ///
+    /// Pointing the frame's slots at the main realm's state makes the callbacks
+    /// find what they expect. A rejection inside a frame is then reported
+    /// against the main realm, which is a reporting detail rather than a crash.
+    /// The main context owns the state and outlives every frame realm, since
+    /// the realms hang off this runtime.
+    pub(crate) fn share_context_state_with_realm(
+        &mut self,
+        realm: &deno_core::v8::Global<deno_core::v8::Context>,
+    ) {
+        use deno_core::v8;
+
+        // The slot indices deno_core reserves per context (`CONTEXT_STATE_SLOT_INDEX`
+        // and `MODULE_MAP_SLOT_INDEX` in its `runtime::jsrealm`). They are not
+        // exported, so they are named here and copied verbatim rather than
+        // guessed at: a wrong index would write over unrelated embedder data.
+        const DENO_CONTEXT_SLOTS: [i32; 2] = [0, 1];
+
+        let main = self.runtime.main_context();
+        let isolate = self.runtime.v8_isolate();
+        let scope = &mut v8::HandleScope::new(isolate);
+        let main_context = v8::Local::new(scope, main);
+        let realm_context = v8::Local::new(scope, realm);
+
+        for slot in DENO_CONTEXT_SLOTS {
+            // SAFETY: the pointer is read from a slot deno_core populated on the
+            // main context and written to the same slot index on another context
+            // of the same isolate. It is borrowed, not owned: the main context
+            // keeps the only strong reference, and the callbacks that read it
+            // clone the `Rc` themselves before using it.
+            unsafe {
+                let state = main_context.get_aligned_pointer_from_embedder_data(slot);
+                if state.is_null() {
+                    continue;
+                }
+                realm_context.set_aligned_pointer_in_embedder_data(slot, state);
+            }
+        }
+    }
+
     /// Takes the ops object bootstrap handed out, and removes the handoff from
     /// the global so page script can never reach `Deno.core.ops`.
     ///

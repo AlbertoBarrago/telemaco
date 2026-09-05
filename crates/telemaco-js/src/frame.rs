@@ -64,6 +64,7 @@ impl FrameRealm {
         if !parent.share_ops_with_realm(&context) {
             return None;
         }
+        parent.share_context_state_with_realm(&context);
         parent.copy_identity_to_realm(&context);
 
         // Only a same-origin frame is reachable from the page. Cross-origin
