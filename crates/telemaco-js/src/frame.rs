@@ -442,6 +442,52 @@ mod tests {
         assert!(frame.is_same_origin_as("https://child.example"));
     }
 
+    // A promise rejected with no handler inside a frame realm used to segfault
+    // the process. deno_core installs `promise_reject_callback` on the isolate
+    // and it resolves its state from whatever context is current, reading a
+    // pointer out of a context embedder slot that only a context deno_core
+    // built carries. A snapshot-restored realm has none, so the callback
+    // dereferenced a null Rc. Real pages reach this through third-party frames
+    // (an ad or a tag manager) on nearly every load.
+    //
+    // Falsifiable: drop the `share_context_state_with_realm` call in
+    // `FrameRealm::new` and this test aborts with SIGSEGV instead of failing.
+    #[tokio::test(flavor = "current_thread")]
+    async fn unhandled_rejection_in_a_frame_realm_does_not_crash_the_isolate() {
+        let mut parent = page(
+            "https://parent.example/page",
+            "<html><body><h1>Parent</h1></body></html>",
+        );
+        let frame = FrameRealm::new(
+            &mut parent,
+            1,
+            0,
+            "https://child.example/frame",
+            "<html><body></body></html>",
+        )
+        .expect("frame realm");
+
+        frame
+            .execute_script(&mut parent, "Promise.reject(new Error('unhandled'));")
+            .expect("the rejection itself is not an error at the call site");
+
+        // The rejection reaches V8's callback on the microtask checkpoint, so
+        // the crash needs the queue drained rather than just the script run.
+        parent.run_event_loop_bounded(50).await.expect("event loop");
+
+        // Surviving is the assertion; still, both realms must remain usable.
+        assert_eq!(
+            frame.evaluate(&mut parent, "1 + 1").unwrap(),
+            serde_json::json!(2)
+        );
+        assert_eq!(
+            parent
+                .evaluate("document.querySelector('h1').textContent")
+                .unwrap(),
+            serde_json::json!("Parent")
+        );
+    }
+
     #[test]
     fn frame_uses_its_embedding_viewport() {
         let mut parent = page(
