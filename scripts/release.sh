@@ -159,7 +159,11 @@ note "── still manual"
 printf '  Homebrew: the tap (AlbertoBarrago/homebrew-telemaco) pins url + sha256\n'
 printf '  per formula, and the macOS archives only exist once release.yml has\n'
 printf '  finished. Update Formula/telemaco.rb and Formula/telemaco-stealth.rb after.\n'
-REMAINING="$(grep -rn "$CURRENT" --include='*.md' . 2>/dev/null | grep -v '^./target' | grep -v vendor || true)"
+# Bounded on both sides so `127.0.0.1:3000` stops matching `0.1.3`: an
+# unbounded grep listed innocent lines here, and a reminder full of noise
+# teaches the reader to skim past the one line that does need a decision.
+CURRENT_RE="${CURRENT//./\\.}"
+REMAINING="$(grep -rnE "(^|[^0-9.])${CURRENT_RE}([^0-9.]|$)" --include='*.md' . 2>/dev/null | grep -v '^./target' | grep -v vendor || true)"
 if [[ -n "$REMAINING" ]]; then
   printf '  Docs still naming %s, left alone on purpose (check if they should change):\n' "$CURRENT"
   printf '%s\n' "$REMAINING" | sed 's/^/    /'
