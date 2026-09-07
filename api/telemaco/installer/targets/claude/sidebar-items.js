@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MCP_PERMISSION"],"fn":["all_project_instructions","claude_config_dir","claude_json_path","detect","install","is_our_web_block","project_instructions_path","remove_legacy_auto_approve","sync_permission_allow","sync_project_mcp_approval","sync_web_block","uninstall"]};

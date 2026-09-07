@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["config_dir","detect","install","legacy_global_dir","mcp_yaml_entry","refresh_guard","refresh_named_hook","remove_our_yaml","uninstall"]};

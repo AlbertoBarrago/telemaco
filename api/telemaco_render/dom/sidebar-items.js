@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["RetainedAttributeMutationKind","RetainedStyleMutation","TreeStyleMutation"],"fn":["layout_dom","layout_dom_with_images","layout_dom_with_resources","retained_attribute_mutation_kind"],"struct":["AttributeStyleMutation","DomLayout","OverflowClip","ScrollId","StickyLayout"]};

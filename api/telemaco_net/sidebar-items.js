@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["blocklist","client","cookies","encoding","interceptor","robots"]};

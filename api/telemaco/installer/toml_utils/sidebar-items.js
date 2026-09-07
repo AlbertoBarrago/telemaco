@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["find_header_index","find_next_table_header","is_table_header","preamble_end","remove_toml_table","remove_toml_table_key","remove_top_level_key_matching","remove_top_level_key_with_value","split_key_value","toml_table_key_value","upsert_toml_table_keys"]};

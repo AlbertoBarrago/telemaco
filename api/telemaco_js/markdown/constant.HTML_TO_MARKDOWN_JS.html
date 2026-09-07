@@ -1,0 +1,67 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="JS expression that walks `document.body` and returns a markdown string. Must be evaluated against a Page that has a fully-bootstrapped JS runtime."><title>HTML_TO_MARKDOWN_JS in telemaco_js::markdown - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-b7b9f40b.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="telemaco_js" data-themes="" data-resource-suffix="" data-rustdoc-version="1.95.0 (59807616e 2026-04-14)" data-channel="1.95.0" data-search-js="search-63369b7b.js" data-stringdex-js="stringdex-b897f86f.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-5013f961.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc constant"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">HTML_TO_MARKDOWN_JS</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../telemaco_js/index.html">telemaco_<wbr>js</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><div id="rustdoc-modnav"><h2><a href="index.html">In telemaco_<wbr>js::<wbr>markdown</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">telemaco_js</a>::<wbr><a href="index.html">markdown</a></div><h1>Constant <span class="constant">HTML_<wbr>TO_<wbr>MARKDOWN_<wbr>JS</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/telemaco_js/markdown.rs.html#7-71">Source</a> </span></div><pre class="rust item-decl"><code>pub const HTML_TO_MARKDOWN_JS: &amp;<a class="primitive" href="https://doc.rust-lang.org/1.95.0/std/primitive.str.html">str</a> = r#&quot;
+(function() {
+    function toMd(el, depth) {
+        if (!el) return &#39;&#39;;
+        var out = &#39;&#39;;
+        if (el.nodeType === 3) return el.textContent || &#39;&#39;;
+        if (el.nodeType !== 1) return &#39;&#39;;
+        var tag = (el.tagName || &#39;&#39;).toLowerCase();
+        var children = &#39;&#39;;
+        var cn = el.childNodes || [];
+        for (var i = 0; i &lt; cn.length; i++) children += toMd(cn[i], depth);
+        children = children.replace(/\n{3,}/g, &#39;\n\n&#39;);
+        switch(tag) {
+            case &#39;h1&#39;: return &#39;\n# &#39; + children.trim() + &#39;\n\n&#39;;
+            case &#39;h2&#39;: return &#39;\n## &#39; + children.trim() + &#39;\n\n&#39;;
+            case &#39;h3&#39;: return &#39;\n### &#39; + children.trim() + &#39;\n\n&#39;;
+            case &#39;h4&#39;: return &#39;\n#### &#39; + children.trim() + &#39;\n\n&#39;;
+            case &#39;h5&#39;: return &#39;\n##### &#39; + children.trim() + &#39;\n\n&#39;;
+            case &#39;h6&#39;: return &#39;\n###### &#39; + children.trim() + &#39;\n\n&#39;;
+            case &#39;p&#39;: return &#39;\n&#39; + children.trim() + &#39;\n\n&#39;;
+            case &#39;br&#39;: return &#39;\n&#39;;
+            case &#39;hr&#39;: return &#39;\n---\n\n&#39;;
+            case &#39;strong&#39;: case &#39;b&#39;: return &#39;**&#39; + children + &#39;**&#39;;
+            case &#39;em&#39;: case &#39;i&#39;: return &#39;*&#39; + children + &#39;*&#39;;
+            case &#39;code&#39;: return &#39;`&#39; + children + &#39;`&#39;;
+            case &#39;pre&#39;: return &#39;\n```\n&#39; + children + &#39;\n```\n\n&#39;;
+            case &#39;blockquote&#39;: return &#39;\n&gt; &#39; + children.trim().replace(/\n/g, &#39;\n&gt; &#39;) + &#39;\n\n&#39;;
+            case &#39;a&#39;:
+                var href = el.getAttribute(&#39;href&#39;) || &#39;&#39;;
+                if (href &amp;&amp; children.trim()) return &#39;[&#39; + children.trim() + &#39;](&#39; + href + &#39;)&#39;;
+                return children;
+            case &#39;img&#39;:
+                var src = el.getAttribute(&#39;src&#39;) || &#39;&#39;;
+                var alt = el.getAttribute(&#39;alt&#39;) || &#39;&#39;;
+                return &#39;![&#39; + alt + &#39;](&#39; + src + &#39;)&#39;;
+            case &#39;ul&#39;: case &#39;ol&#39;:
+                return &#39;\n&#39; + children + &#39;\n&#39;;
+            case &#39;li&#39;:
+                var parent = el.parentNode;
+                var isOrdered = parent &amp;&amp; parent.tagName &amp;&amp; parent.tagName.toLowerCase() === &#39;ol&#39;;
+                var bullet = isOrdered ? &#39;1. &#39; : &#39;- &#39;;
+                return bullet + children.trim() + &#39;\n&#39;;
+            case &#39;table&#39;: return &#39;\n&#39; + children + &#39;\n&#39;;
+            case &#39;thead&#39;: case &#39;tbody&#39;: case &#39;tfoot&#39;: return children;
+            case &#39;tr&#39;:
+                var cells = [];
+                var tds = el.childNodes || [];
+                for (var j = 0; j &lt; tds.length; j++) {
+                    if (tds[j].nodeType === 1) cells.push(toMd(tds[j], depth).trim());
+                }
+                return &#39;| &#39; + cells.join(&#39; | &#39;) + &#39; |\n&#39;;
+            case &#39;th&#39;: case &#39;td&#39;: return children;
+            case &#39;script&#39;: case &#39;style&#39;: case &#39;noscript&#39;: case &#39;link&#39;: case &#39;meta&#39;: return &#39;&#39;;
+            case &#39;div&#39;: case &#39;section&#39;: case &#39;article&#39;: case &#39;main&#39;: case &#39;aside&#39;: case &#39;nav&#39;: case &#39;header&#39;: case &#39;footer&#39;:
+                return &#39;\n&#39; + children;
+            case &#39;span&#39;: return children;
+            default: return children;
+        }
+    }
+    var body = document.body || document.documentElement;
+    var md = toMd(body, 0);
+    md = md.replace(/\n{3,}/g, &#39;\n\n&#39;).trim();
+    return md;
+})()
+&quot;#;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>JS expression that walks <code>document.body</code> and returns a markdown string.
+Must be evaluated against a Page that has a fully-bootstrapped JS runtime.</p>
+</div></details></section></div></main></body></html>

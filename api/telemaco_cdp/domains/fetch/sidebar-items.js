@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["FetchResolution"],"fn":["handle"],"struct":["FetchInterceptState","PausedRequest"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["all_workspace_rules","detect","global_rule_paths","hooks_target","install","legacy_mcp_paths","mcp_paths","uninstall","workspace_rules_path"]};

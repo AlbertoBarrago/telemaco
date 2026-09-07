@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["agent_dir","all_instructions_paths","detect","install","instructions_path","uninstall"]};

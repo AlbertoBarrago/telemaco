@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["apply_inline","compute_style","supports_declaration","ua_style"]};

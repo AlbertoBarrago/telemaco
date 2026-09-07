@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["cline_home","cline_workspace_rules","detect","get_base_storage","global_mcp_targets","install","instructions_paths","legacy_global_mcp_paths","legacy_instructions","mcp_entry","project_mcp_path","roo_storage_base","uninstall","vscode_user_dir"]};

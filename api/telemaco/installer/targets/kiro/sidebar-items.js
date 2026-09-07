@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["detect","hook_command_of","install","mcp_entry","uninstall"]};

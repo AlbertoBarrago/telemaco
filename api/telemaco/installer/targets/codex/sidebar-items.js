@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["all_instruction_files","codex_home","detect","has_inline_hooks","install","instructions_file","uninstall"]};

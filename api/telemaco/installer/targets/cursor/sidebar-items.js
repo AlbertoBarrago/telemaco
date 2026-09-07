@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["detect","install","sync_session_hook","uninstall"]};

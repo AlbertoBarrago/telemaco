@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["print_config_snippet","resolve_install_home","resolve_target_arg","run_installer","run_uninstaller"],"mod":["instructions","json_utils","prompt_hook","targets","text_utils","toml_utils","yaml_utils"],"struct":["InstallCliArgs"]};

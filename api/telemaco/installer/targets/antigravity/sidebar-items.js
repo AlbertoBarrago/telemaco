@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["config_dir","detect","install","instructions_paths","legacy_paths","uninstall"]};

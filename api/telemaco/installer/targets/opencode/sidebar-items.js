@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["config_path","detect","install","mcp_entry","uninstall"]};

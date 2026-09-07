@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["all_project_context_files","config_path","detect","hermes_home","hook_item","install","project_context_file","uninstall"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["OWNED_ENTRY_KEYS"],"enum":["KeyForm"],"fn":["block_extent","child_indent","classify_key_line","indent_block","indent_of","prune_empty_yaml_keys","refresh_yaml_entry","reindent_block","remove_yaml_block","splice_lines","upsert_yaml_path","yaml_mcp_entry"]};
