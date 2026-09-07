@@ -219,6 +219,39 @@ Ubuntu/Debian:
 sudo apt-get install build-essential cmake clang libclang-dev llvm-dev
 ```
 
+### Crates.io
+
+Every crate is published to [crates.io](https://crates.io), so you can use
+Telemaco as a library in your own Rust project or build its CLI from the
+registry:
+
+```bash
+# The headless browser, ready to drive from Rust
+cargo add telemaco
+```
+
+Install the CLI as a binary from crates.io too:
+
+```bash
+cargo install telemaco-cli --features render
+```
+
+The publishable set: `telemaco` (embeddable API), `telemaco-cli`, and the
+workspace crates `telemaco-dom`, `telemaco-net`, `telemaco-js`,
+`telemaco-browser`, `telemaco-cdp`, `telemaco-mcp`, `telemaco-render`.
+
+The two libraries that define how a page renders are Telemaco-owned forks,
+published and maintained here rather than pinned to upstream schedules:
+
+- [`mentore`](https://crates.io/crates/mentore): the layout engine, a fork of
+  Taffy.
+- [`athena-text`](https://crates.io/crates/athena-text): the text engine, a
+  fork of cosmic-text (including the CSS line-breaking work).
+
+Both publish exactly the version Telemaco builds against, under the same lib
+names (`taffy` / `cosmic_text`), so the crate source is unchanged: the layout
+and text output never move underneath a release.
+
 ## Quick start
 
 ### Fetch a page

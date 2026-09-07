@@ -516,7 +516,7 @@
     <div class="sec-head">
       <div class="kicker">Install</div>
       <h2>Up and running in seconds</h2>
-      <p>One-command installer, a published Docker image, or build from source.</p>
+      <p>One-command installer, a published Docker image, the CLI from crates.io, or build from source.</p>
     </div>
     <div class="install-grid">
       <div class="install-card">
@@ -555,7 +555,14 @@
 <span class="cmd">$</span> cargo build --release -p telemaco-cli --bins --features render</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">6</span> Update</h3>
+        <h3><span class="n">6</span> Crates.io</h3>
+        <pre><span class="cmt"># The headless browser as a Rust library</span>
+<span class="cmd">$</span> cargo add telemaco
+<span class="cmt"># Or the CLI as a binary</span>
+<span class="cmd">$</span> cargo install telemaco-cli --features render</pre>
+      </div>
+      <div class="install-card">
+        <h3><span class="n">7</span> Update</h3>
         <pre><span class="cmt"># Keep telemaco current</span>
 <span class="cmd">$</span> telemaco update            <span class="cmt"># latest release</span>
 <span class="cmd">$</span> telemaco update --check    <span class="cmt"># report only</span>
