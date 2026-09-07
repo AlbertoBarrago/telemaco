@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "DOM tree and CSS selector matching for the Telemaco headless browser engine."
+keywords = ["dom", "html", "browser", "headless", "scraping"]
+categories = ["web-programming", "parser-implementations"]
+homepage.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 html5ever = { workspace = true }

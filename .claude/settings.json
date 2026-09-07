@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__telemaco__*"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/albz/.local/bin/telemaco prompt-hook"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "WebSearch|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Built-in search/fetch was turned off by `telemaco install`. Use the Telemaco tools (browser_navigate, browser_markdown) or `telemaco fetch <url> --dump markdown` instead. To restore the built-in tools, run `telemaco uninstall` or re-run the installer with --no-block-web.' >&2; exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -17,15 +17,18 @@ version = "0.2.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/AlbertoBarrago/telemaco"
+homepage = "https://github.com/AlbertoBarrago/telemaco"
+rust-version = "1.85"
+authors = ["Alberto Barrago"]
 
 [workspace.dependencies]
-telemaco-dom = { path = "crates/telemaco-dom" }
-telemaco-net = { path = "crates/telemaco-net" }
-telemaco-browser = { path = "crates/telemaco-browser" }
-telemaco-cdp = { path = "crates/telemaco-cdp" }
-telemaco-js = { path = "crates/telemaco-js" }
-telemaco-mcp = { path = "crates/telemaco-mcp" }
-telemaco-render = { path = "crates/telemaco-render" }
+telemaco-dom = { path = "crates/telemaco-dom", version = "0.2.0" }
+telemaco-net = { path = "crates/telemaco-net", version = "0.2.0" }
+telemaco-browser = { path = "crates/telemaco-browser", version = "0.2.0" }
+telemaco-cdp = { path = "crates/telemaco-cdp", version = "0.2.0" }
+telemaco-js = { path = "crates/telemaco-js", version = "0.2.0" }
+telemaco-mcp = { path = "crates/telemaco-mcp", version = "0.2.0" }
+telemaco-render = { path = "crates/telemaco-render", version = "0.2.0" }
 
 html5ever = "0.39"
 markup5ever = "0.39"
@@ -33,7 +36,10 @@ selectors = "0.26"
 servo_arc = "0.4"
 cssparser = "0.34"
 # Layout engine for the optional render layer (telemaco-render). Pure Rust.
-taffy = "0.12"
+# `mentore` is the Telemaco-maintained fork of Taffy (same lib name `taffy`,
+# so `use taffy::` keeps compiling unchanged) pinned to the exact version the
+# vendored tree built against, so the layout never changes on a fresh resolve.
+taffy = { version = "=0.12.1", package = "mentore" }
 # CPU-only pure-Rust 2D rasterizer for the render layer's paint step.
 tiny-skia = "0.12"
 # Pure-Rust glyph rasterizer for the render layer's text step.
@@ -61,11 +67,11 @@ anyhow = "1"
 base64 = "0.22"
 
 [patch.crates-io]
-# Keep the grid shrink-to-fit correction local until it lands upstream.
-taffy = { path = "vendor/taffy" }
-# Carry the same canonical variable-font coordinates through shaping and
-# rasterization until the upstream API exposes them.
-cosmic-text = { path = "vendor/cosmic-text" }
+# Removed: the taffy and cosmic-text patches pointing at vendor/ cannot travel
+# to crates.io (a [patch] is a local build directive, not something a published
+# crate carries). telemaco-render now depends on the published forks mentore and
+# athena-text directly, which expose the same lib names (taffy / cosmic_text).
+# The vendor/ directories are no longer referenced and are kept for reference.
 
 # Unwinding (the Rust default) is REQUIRED for the anti-panic protocol: ops wrap
 # their bodies in std::panic::catch_unwind so a panic degrades to an error return

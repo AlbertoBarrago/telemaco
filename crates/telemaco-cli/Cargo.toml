@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Command line interface for Telemaco: fetch, CDP server, scraping and MCP."
+keywords = ["cli", "headless", "browser", "scraping", "puppeteer"]
+categories = ["command-line-utilities", "web-programming"]
+homepage.workspace = true
+rust-version.workspace = true
 
 [[bin]]
 name = "telemaco"

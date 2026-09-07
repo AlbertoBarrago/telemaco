@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Model Context Protocol server exposing Telemaco browser automation to AI agents."
+keywords = ["mcp", "ai-agents", "automation", "browser", "scraping"]
+categories = ["web-programming", "development-tools"]
+homepage.workspace = true
+rust-version.workspace = true
 
 [features]
 default = []

@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Page navigation and JavaScript evaluation for the Telemaco headless browser."
+keywords = ["browser", "headless", "automation", "scraping", "page"]
+categories = ["web-programming", "api-bindings"]
+homepage.workspace = true
+rust-version.workspace = true
 
 [features]
 default = []

@@ -181,6 +181,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "athena-text"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a8f62265f018e19c9c2f3123f24af569f4ab8124f723c7fc219a1da5e52ed22"
+dependencies = [
+ "bitflags 2.13.0",
+ "fontdb 0.16.2",
+ "log",
+ "rangemap",
+ "rustc-hash 1.1.0",
+ "rustybuzz",
+ "self_cell",
+ "smol_str",
+ "swash",
+ "sys-locale",
+ "ttf-parser 0.25.1",
+ "unicode-bidi",
+ "unicode-linebreak",
+ "unicode-script",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -585,27 +608,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77745e017f5edba1a9c1d854f6f3a52dac8a12dd5af5d2f54aecf61e43d80d30"
 dependencies = [
  "libm",
-]
-
-[[package]]
-name = "cosmic-text"
-version = "0.14.2"
-dependencies = [
- "bitflags 2.13.0",
- "fontdb 0.16.2",
- "log",
- "rangemap",
- "rustc-hash 1.1.0",
- "rustybuzz",
- "self_cell",
- "smol_str",
- "swash",
- "sys-locale",
- "ttf-parser 0.25.1",
- "unicode-bidi",
- "unicode-linebreak",
- "unicode-script",
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -1813,6 +1815,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "mentore"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10245e6961999aa2455aa12bb4a3d17fa8d9c38413d477c9896a6acd5dd58625"
+dependencies = [
+ "arrayvec",
+ "grid",
+ "serde",
+ "slotmap",
 ]
 
 [[package]]
@@ -3132,16 +3146,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "taffy"
-version = "0.12.1"
-dependencies = [
- "arrayvec",
- "grid",
- "serde",
- "slotmap",
-]
-
-[[package]]
 name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3156,7 +3160,7 @@ dependencies = [
  "serde_json",
  "telemaco-browser",
  "telemaco-net",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tokio",
  "url",
 ]
@@ -3316,14 +3320,14 @@ name = "telemaco-render"
 version = "0.2.0"
 dependencies = [
  "ab_glyph",
+ "athena-text",
  "base64",
- "cosmic-text",
  "cssparser",
  "image",
  "log",
+ "mentore",
  "resvg",
  "swash",
- "taffy",
  "telemaco-dom",
  "tiny-skia",
  "ureq",

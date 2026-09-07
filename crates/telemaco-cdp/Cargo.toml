@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Chrome DevTools Protocol server for the Telemaco headless browser, compatible with Puppeteer and Playwright."
+keywords = ["cdp", "devtools", "puppeteer", "playwright", "headless"]
+categories = ["web-programming", "development-tools::testing"]
+homepage.workspace = true
+rust-version.workspace = true
 
 [features]
 default = []

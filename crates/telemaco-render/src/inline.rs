@@ -45,7 +45,12 @@ static MONO_O: &[u8] = include_bytes!("../assets/liberation-mono-oblique.ttf");
 static MONO_BO: &[u8] = include_bytes!("../assets/liberation-mono-boldoblique.ttf");
 static SYSTEM_R: &[u8] = include_bytes!("../assets/dejavu-sans.ttf");
 static SYSTEM_B: &[u8] = include_bytes!("../assets/dejavu-sans-bold.ttf");
-static EMOJI_R: &[u8] = include_bytes!("../assets/noto-color-emoji.ttf");
+// Absent from the published crates.io package (see build.rs); `None` there,
+// which drops emoji to the monochrome fallback instead of failing the build.
+#[cfg(telemaco_emoji_font)]
+static EMOJI_R: Option<&[u8]> = Some(include_bytes!("../assets/noto-color-emoji.ttf"));
+#[cfg(not(telemaco_emoji_font))]
+static EMOJI_R: Option<&[u8]> = None;
 #[cfg(test)]
 static FALLBACK: &[u8] = SYSTEM_R;
 
@@ -1002,8 +1007,8 @@ impl TextEngine {
                 declarations.push((id, None, None, None));
             }
         }
-        if load_emoji {
-            for id in db.load_font_source(cosmic_text::fontdb::Source::Binary(Arc::new(EMOJI_R))) {
+        if let (true, Some(emoji)) = (load_emoji, EMOJI_R) {
+            for id in db.load_font_source(cosmic_text::fontdb::Source::Binary(Arc::new(emoji))) {
                 declarations.push((id, None, None, None));
             }
         }
@@ -4931,11 +4936,15 @@ gamma</div>"#,
     }
 
     #[test]
-    fn emoji_font_is_loaded_only_for_emoji_documents() {
+    fn emoji_text_is_classified_without_the_font() {
         assert!(!text_may_need_emoji_font("Plain text and arrows ->"));
         assert!(text_may_need_emoji_font("Add ➕ or remove ➖"));
         assert!(text_may_need_emoji_font("Launch 🚀"));
+    }
 
+    #[cfg(telemaco_emoji_font)]
+    #[test]
+    fn emoji_font_is_loaded_only_for_emoji_documents() {
         let plain = TextEngine::new_with_web_fonts_and_emoji(&[], false);
         assert!(!plain.loaded_families.contains_key("noto color emoji"));
 

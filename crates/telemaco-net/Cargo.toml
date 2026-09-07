@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "HTTP client, cookie jar, stealth transport and SSRF guard for the Telemaco headless browser."
+keywords = ["http", "cookies", "stealth", "scraping", "browser"]
+categories = ["web-programming::http-client", "network-programming"]
+homepage.workspace = true
+rust-version.workspace = true
 
 [features]
 default = []

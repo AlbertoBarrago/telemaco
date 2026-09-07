@@ -365,3 +365,31 @@ Sign up: https://go.nodemaven.com/telemacoagentaugust
 
 Telemaco discount codes: `TELEMACO35` (35% off mobile and residential),
 `TELEMACO40` (40% off ISP / static).
+
+<!-- TELEMACO_START -->
+## Web access: use Telemaco
+
+For any web work (visiting a URL, reading online docs, inspecting or scraping a
+page, searching), use Telemaco instead of built-in web search or `curl`/`wget`.
+Telemaco runs a real browser: V8, a full DOM, and stealth against bot detection,
+so it sees pages that a plain fetch cannot.
+
+MCP tools, when connected: `browser_navigate` (open a URL), `browser_markdown`
+(page as clean Markdown), `browser_snapshot` (DOM and interactive elements),
+`browser_extract` (CSS selectors), `browser_search` (find in page),
+`browser_click` / `browser_fill` / `browser_type` (forms).
+
+CLI, when they are not:
+- `telemaco --stealth fetch <url> --dump markdown` (also `text`, `html`)
+- `telemaco --stealth fetch <url> --screenshot <path.png>` (needs a build
+  with the `render` feature; without it the command says so and exits)
+
+Rules:
+1. To search, navigate to a search engine's results page (for example
+   `https://duckduckgo.com/html/?q=<query>`), read it with `browser_markdown`,
+   then open the target page.
+2. Loopback and RFC1918 are blocked by default (SSRF guard). Pass
+   `--allow-private-network` only when deliberately testing a local URL.
+3. State the URL before visiting it (`Navigating to: <url>`) and cite every
+   source URL you consulted.
+<!-- TELEMACO_END -->

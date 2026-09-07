@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "telemaco": {
+      "type": "stdio",
+      "command": "/Users/albz/.local/bin/telemaco",
+      "args": [
+        "mcp",
+        "--stealth",
+        "--agent-directives"
+      ]
+    }
+  }
+}

@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "V8 JavaScript runtime (deno_core) and DOM bindings for the Telemaco headless browser."
+keywords = ["javascript", "v8", "deno-core", "dom", "headless"]
+categories = ["web-programming", "development-tools"]
+homepage.workspace = true
+rust-version.workspace = true
 
 [features]
 default = []

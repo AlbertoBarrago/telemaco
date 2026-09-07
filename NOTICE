@@ -16,7 +16,12 @@ https://www.apache.org/licenses/LICENSE-2.0
 This product also incorporates third-party components under their own
 licenses, including but not limited to:
   - Servo project components (html5ever, selectors, cssparser, servo_arc)
-  - taffy (layout engine)
+  - mentore, the Telemaco-maintained fork of the taffy layout engine
+    (https://github.com/AlbertoBarrago/mentore, MIT; upstream:
+    https://github.com/DioxusLabs/taffy)
+  - athena-text, the Telemaco-maintained fork of the cosmic-text text engine
+    (https://github.com/AlbertoBarrago/athena, MIT OR Apache-2.0; upstream:
+    https://github.com/pop-os/cosmic-text)
   - tiny-skia (2D rasterizer)
   - ab_glyph (glyph rasterizer)
   - deno_core / V8 (JavaScript runtime)
