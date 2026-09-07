@@ -44,10 +44,13 @@ The dispatcher emits CDP events (`Network.requestWillBeSent`, `Page.frameNavigat
 
 ## Rendering flow
 
-`telemaco-render` consumes the shared DOM and computed style state. Taffy
-provides the flex/grid foundation; Telemaco adds browser formatting behavior,
-text shaping, intrinsic replaced-element sizing, retained geometry, scrolling,
-and CPU-backed paint. `telemaco-js` exposes renderer-owned geometry to DOM APIs,
+`telemaco-render` consumes the shared DOM and computed style state. Its
+layout and text engines are Telemaco-owned forks published to crates.io and
+maintained here: `mentore` (the fork of Taffy) provides the flex/grid
+foundation, and `athena-text` (the fork of cosmic-text) provides text shaping
+and CSS line breaking. Telemaco adds browser formatting behavior, intrinsic
+replaced-element sizing, retained geometry, scrolling, and CPU-backed paint.
+`telemaco-js` exposes renderer-owned geometry to DOM APIs,
 `telemaco-browser` prepares resources and owns capture, and `telemaco-cdp` maps
 screenshots, screencast frames, and raster PDF output onto CDP.
 
