@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["all_instructions_paths","config_dir_for","context_file_names","detect","gemini_dir","install","instructions_path","uninstall"]};

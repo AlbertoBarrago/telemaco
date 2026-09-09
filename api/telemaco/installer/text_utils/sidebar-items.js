@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["line_ending","normalize","with_line_ending"]};

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/telemaco-render/src/style.rs`."><title>style.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-b7b9f40b.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="telemaco_render" data-themes="" data-resource-suffix="" data-rustdoc-version="1.95.0 (59807616e 2026-04-14)" data-channel="1.95.0" data-search-js="search-63369b7b.js" data-stringdex-js="stringdex-b897f86f.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-5013f961.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">telemaco_render/</div>style.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-5"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Computed-style lite: parse inline CSS declarations plus a small UA default
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `crates/telemaco-render/src/style.rs`."><title>style.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-1ed95124.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="telemaco_render" data-themes="" data-resource-suffix="" data-rustdoc-version="1.98.1 (48a229cea 2026-09-01)" data-channel="1.98.1" data-search-js="search-9944d736.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-417ebf0a.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">telemaco_render/</div>style.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-5"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! Computed-style lite: parse inline CSS declarations plus a small UA default
 <a href=#2 id=2 data-nosnippet>2</a>//! sheet into the layout-relevant subset of [`crate::LayoutStyle`].
 <a href=#3 id=3 data-nosnippet>3</a>//!
 <a href=#4 id=4 data-nosnippet>4</a>//! This is deliberately not a full CSS cascade. It handles the properties that
@@ -8,7 +8,7 @@
 <a href=#8 id=8 data-nosnippet>8</a>//! later; for inline-style attributes a compact tokenizer is enough and keeps
 <a href=#9 id=9 data-nosnippet>9</a>//! the crate dependency-light.
 <a href=#10 id=10 data-nosnippet>10</a>
-<a href=#11 id=11 data-nosnippet>11</a></span><span class="kw">use </span>crate::{Display, Edges, LayoutStyle};
+<a href=#11 id=11 data-nosnippet>11</a></span><span class="kw">use crate</span>::{Display, Edges, LayoutStyle};
 <a href=#12 id=12 data-nosnippet>12</a><span class="kw">use </span>std::collections::BTreeMap;
 <a href=#13 id=13 data-nosnippet>13</a>
 <a href=#14 id=14 data-nosnippet>14</a><span class="doccomment">/// Compute the layout-relevant style for an element: UA defaults for its tag,
@@ -7840,7 +7840,7 @@
 <a href=#7840 id=7840 data-nosnippet>7840</a>}
 <a href=#7841 id=7841 data-nosnippet>7841</a>
 <a href=#7842 id=7842 data-nosnippet>7842</a><span class="kw">fn </span>parse_radial_gradient_geometry(value: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw">crate</span>::RadialGradientGeometry&gt; {
-<a href=#7843 id=7843 data-nosnippet>7843</a>    <span class="kw">use </span>crate::{
+<a href=#7843 id=7843 data-nosnippet>7843</a>    <span class="kw">use crate</span>::{
 <a href=#7844 id=7844 data-nosnippet>7844</a>        RadialGradientGeometry <span class="kw">as </span>Geometry, RadialGradientShape <span class="kw">as </span>Shape,
 <a href=#7845 id=7845 data-nosnippet>7845</a>        RadialGradientSize <span class="kw">as </span>Size,
 <a href=#7846 id=7846 data-nosnippet>7846</a>    };
@@ -8398,7 +8398,7 @@
 <a href=#8398 id=8398 data-nosnippet>8398</a>/// by -12px, whereas `background-position:0` must leave it at the start edge
 <a href=#8399 id=8399 data-nosnippet>8399</a>/// and `background-position:-24px` must select its second 24px frame.
 <a href=#8400 id=8400 data-nosnippet>8400</a></span><span class="kw">fn </span>parse_background_position(value: <span class="kw-2">&amp;</span>str) -&gt; <span class="kw">crate</span>::BackgroundPosition {
-<a href=#8401 id=8401 data-nosnippet>8401</a>    <span class="kw">use </span>crate::{BackgroundPosition, BackgroundPositionAxis};
+<a href=#8401 id=8401 data-nosnippet>8401</a>    <span class="kw">use crate</span>::{BackgroundPosition, BackgroundPositionAxis};
 <a href=#8402 id=8402 data-nosnippet>8402</a>
 <a href=#8403 id=8403 data-nosnippet>8403</a>    <span class="kw">let </span>first_layer = split_top_level(value, <span class="string">','</span>)
 <a href=#8404 id=8404 data-nosnippet>8404</a>        .into_iter()
@@ -8615,7 +8615,7 @@
 <a href=#8615 id=8615 data-nosnippet>8615</a>
 <a href=#8616 id=8616 data-nosnippet>8616</a><span class="attr">#[cfg(test)]
 <a href=#8617 id=8617 data-nosnippet>8617</a></span><span class="kw">mod </span>tests {
-<a href=#8618 id=8618 data-nosnippet>8618</a>    <span class="kw">use </span>super::<span class="kw-2">*</span>;
+<a href=#8618 id=8618 data-nosnippet>8618</a>    <span class="kw">use super</span>::<span class="kw-2">*</span>;
 <a href=#8619 id=8619 data-nosnippet>8619</a>
 <a href=#8620 id=8620 data-nosnippet>8620</a>    <span class="attr">#[test]
 <a href=#8621 id=8621 data-nosnippet>8621</a>    </span><span class="kw">fn </span>direction_parses_inherited_state_and_supports_only_real_values() {
@@ -10603,7 +10603,7 @@
 <a href=#10603 id=10603 data-nosnippet>10603</a>
 <a href=#10604 id=10604 data-nosnippet>10604</a>    <span class="attr">#[test]
 <a href=#10605 id=10605 data-nosnippet>10605</a>    </span><span class="kw">fn </span>background_position_preserves_sprite_offsets() {
-<a href=#10606 id=10606 data-nosnippet>10606</a>        <span class="kw">use </span>crate::{BackgroundPosition, BackgroundPositionAxis};
+<a href=#10606 id=10606 data-nosnippet>10606</a>        <span class="kw">use crate</span>::{BackgroundPosition, BackgroundPositionAxis};
 <a href=#10607 id=10607 data-nosnippet>10607</a>
 <a href=#10608 id=10608 data-nosnippet>10608</a>        <span class="kw">let </span>first = compute_style(<span class="string">"div"</span>, <span class="prelude-val">Some</span>(<span class="string">"background-position:0"</span>));
 <a href=#10609 id=10609 data-nosnippet>10609</a>        <span class="macro">assert_eq!</span>(

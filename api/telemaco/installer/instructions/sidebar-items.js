@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["TELEMACO_END_MARKER","TELEMACO_START_MARKER"],"enum":["Action","MarkedSection"],"fn":["get_instructions_block","locate_marked_section","malformed","plan_marked_section","plan_remove_marked_section","remove_marked_section","replace_or_append_marked_section"]};

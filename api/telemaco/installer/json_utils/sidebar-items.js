@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["BACKUP_SUFFIX"],"enum":["JsonSource"],"fn":["atomic_write_file","backup_file","backup_path","empty_object","json_deep_equal","parse_json_file","read_json_file","read_json_for_update","resolve_write_target","strip_jsonc","strip_trailing_commas","write_json_file"],"struct":["JsonConfig"]};

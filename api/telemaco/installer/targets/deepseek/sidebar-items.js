@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["PATCH_ID"],"fn":["detect","dsh_home","install","is_effectively_empty","line_has_patch_id","mcp_patch_item","patch_path","remove_patch_item","top_level_items","uninstall","upsert_patch_item"]};

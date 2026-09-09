@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["SEARCH_VERB_STEMS","SEARCH_VERB_WORDS","TELEMACO_DIRECTIVE","TLDS","TOPICS","WEB_MARKERS"],"enum":["OutputFormat"],"fn":["contains_word","extract_prompt_from_transcript","has_web_intent","looks_like_host","process_hook_input_with","run_prompt_hook"],"struct":["AntigravityInjectedStep","AntigravityPreInvocationResult","HookPayload"]};

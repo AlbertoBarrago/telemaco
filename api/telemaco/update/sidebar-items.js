@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["CHECK_INTERVAL","CHECK_TIMEOUT","REPO","USER_AGENT"],"fn":["asset_name","cache_file","check_is_due","check_writable","install_paths","is_cargo_build_output","latest_release_tag","maybe_notify","parse_version","run","variant_suffix","variant_suffix_for"]};
