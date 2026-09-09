@@ -2123,8 +2123,16 @@ fn op_console_msg(
     #[string] msg: &str,
     #[string] args_json: &str,
 ) {
+    // React/Next.js hydration mismatches (e.g. "Minified React error #418") are
+    // false alarms: the server-rendered HTML differs from the client render for
+    // reasons unrelated to the engine (non-deterministic ids, streaming SSR), and
+    // the page still renders fine. Surface them as a plain warning, not an ERROR.
+    let is_hydration_mismatch = msg.contains("Minified React error #418");
     match level {
         "warn" | "warning" => tracing::warn!(target: "telemaco::console", "{}", msg),
+        "error" if is_hydration_mismatch => {
+            tracing::warn!(target: "telemaco::console", "{}", msg)
+        }
         "error" => tracing::error!(target: "telemaco::console", "{}", msg),
         _ => tracing::info!(target: "telemaco::console", "{}", msg),
     }

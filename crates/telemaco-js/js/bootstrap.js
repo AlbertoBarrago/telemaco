@@ -1943,6 +1943,22 @@ function _seedDetachedTreeState(node) {
   node._treeConnectedEpoch = _treeMutationEpoch;
 }
 
+// Custom Elements v1 lifecycle: fire attributeChangedCallback when a
+// set/remove touches an attribute the element's class observes. The observed
+// list is read live from the constructor's prototype, so classes that populate
+// it late (from inside connectedCallback) still work.
+function _maybeAttributeChangedCallback(el, name, oldValue, newValue, namespace) {
+  try {
+    const observed = el.constructor?.observedAttributes;
+    if (!observed || !observed.includes(name)) return;
+    if (typeof el.attributeChangedCallback !== "function") return;
+    el.attributeChangedCallback(name, oldValue, newValue, namespace);
+  } catch (e) {
+    // A throwing callback must not break the attribute write.
+    console.error("attributeChangedCallback error:", e);
+  }
+}
+
 function _seedInsertedTreeState(node, parent, connected) {
   node._treeDetachedExact = false;
   node._treeParent = parent;
@@ -3161,6 +3177,15 @@ class Element extends Node {
     const entry = _customElementConstructionStack[_customElementConstructionStack.length - 1];
     const matchesUpgrade = entry && new.target === entry.constructor;
     const upgrading = matchesUpgrade && !entry.constructed ? entry.element : null;
+    // Direct `new Ctor()` (LWC, Lit, Stencil) constructs a custom element
+    // outside document.createElement/upgrade. Allocate a real node from the
+    // registered name; an unregistered class is an illegal constructor.
+    let createdName = null;
+    if (nid === undefined && !upgrading) {
+      createdName = globalThis.customElements?.getName?.(new.target);
+      if (!createdName) throw new TypeError("Illegal constructor");
+      nid = +_dom("create_element", createdName);
+    }
     super(upgrading ? upgrading._nid : nid);
     if (matchesUpgrade && entry.constructed) {
       throw new TypeError("Custom element is already being constructed");
@@ -3172,6 +3197,16 @@ class Element extends Node {
       entry.constructed = true;
       Object.setPrototypeOf(upgrading, new.target.prototype);
       return upgrading;
+    }
+    if (createdName) {
+      // Seed the freshly allocated node's metadata and cache it, mirroring
+      // what document.createElement does after `new C(nid)`.
+      this._tagName = createdName.toUpperCase();
+      this._lname = createdName;
+      this._ns = "http://www.w3.org/1999/xhtml";
+      this._nullNamespaceAttrs = new Map();
+      _seedDetachedTreeState(this);
+      _cache.set(nid, this);
     }
     this._style = _styleProxy(new CSSStyleDeclaration(this));
   }
@@ -3372,6 +3407,7 @@ class Element extends Node {
     const previousWindowName = (n === "id" || n === "name")
       ? this.getAttribute(n)
       : null;
+    const previousValue = this.getAttribute(n);
     const value = String(v);
     _dom("set_attribute", this._nid, n + "\0" + value);
     if (n === "src" && this.localName === "iframe") {
@@ -3402,6 +3438,7 @@ class Element extends Node {
         image._imageSourceChanged();
       }
     }
+    _maybeAttributeChangedCallback(this, n, previousValue, value);
   }
   setAttributeNS(ns, n, v) {
     ns = ns == null || ns === '' ? '' : String(ns);
@@ -3421,6 +3458,7 @@ class Element extends Node {
     const previousWindowName = (n === "id" || n === "name")
       ? this.getAttribute(n)
       : null;
+    const previousValue = this.getAttribute(n);
     _dom("remove_attribute", this._nid, n);
     if (this._nullNamespaceAttrs instanceof Map) {
       this._nullNamespaceAttrs.delete(n);
@@ -3441,6 +3479,7 @@ class Element extends Node {
         image._imageSourceChanged();
       }
     }
+    _maybeAttributeChangedCallback(this, n, previousValue, null);
   }
   removeAttributeNS(ns, n) {
     ns = String(ns == null ? "" : ns);
@@ -9065,6 +9104,16 @@ class CustomElementRegistry {
       if (typeof el.connectedCallback === 'function' && globalThis.document?.contains?.(el)) {
         try { el.connectedCallback(); } catch (e) {}
       }
+      // Fire attributeChangedCallback for every attribute already present on
+      // the upgraded element. Done after connectedCallback: some frameworks
+      // populate observedAttributes from inside connectedCallback, so firing
+      // first would observe nothing.
+      try {
+        const names = el.getAttributeNames ? el.getAttributeNames() : [];
+        for (const name of names) {
+          _maybeAttributeChangedCallback(el, name, null, el.getAttribute(name));
+        }
+      } catch (e) {}
     } catch (e) {
       el.__customUpgradeFailed = true;
     }
