@@ -69,4 +69,8 @@ jobs:
 
       - name: Push to main
         if: steps.commit.outputs.changed == 'true'
-        run: git push origin main
+        # HEAD:main instead of main: on a tag-triggered run the checkout is a
+        # detached HEAD with no local `main` branch, so `git push origin main`
+        # fails with "src refspec main does not match any". Pushing the current
+        # commit to the remote branch works for both the tag and dispatch paths.
+        run: git push origin HEAD:main
