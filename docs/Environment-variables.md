@@ -152,6 +152,16 @@ tool call argument > CLI flag > environment variable > config file > default
 
 So an environment variable overrides the config file, and is in turn overridden by `--max-chars` and by a `max_chars` argument on an individual tool call. Per-process equivalent: `--max-chars`. See [Configuration file](Configuration-file.md) for the file layer.
 
+## Remote
+
+### `TELEMACO_TAILCAT_BIN`
+
+Path to the `tailcat` binary used by `telemaco remote`. Unset or empty means the first `tailcat` on `PATH`. When set, it must point at an executable file: a wrong path is an error, not a silent fallback to `PATH`.
+
+```bash
+TELEMACO_TAILCAT_BIN=/opt/tailcat/bin/tailcat telemaco remote status tcXXXX
+```
+
 ## Logging
 
 ### `RUST_LOG`

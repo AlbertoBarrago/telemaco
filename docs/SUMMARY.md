@@ -22,6 +22,7 @@
 * [Persist cookies and storage](Persist-cookies-and-storage.md)
 * [Intercept and modify requests](Intercept-and-modify-requests.md)
 * [Run in production at scale](Run-in-production-at-scale.md)
+* [Remote over Tailcat](Remote-over-Tailcat.md)
 
 ## Reference
 
