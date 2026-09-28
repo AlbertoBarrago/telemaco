@@ -4,12 +4,16 @@
 //! the transports (Tailcat, local) live in `telemaco-remote`; nothing here
 //! branches on which transport is in use.
 
+use std::io::Write as _;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::Subcommand;
 use telemaco_remote::agent::{self, AgentConfig};
-use telemaco_remote::protocol::{sanitize_for_display, ProtocolError};
+use telemaco_remote::protocol::{
+    sanitize_for_display, EnvVar, ErrorCode, ExecEnd, ExecRequest, OutputStream, ProtocolError,
+};
 use telemaco_remote::transport::{
     KeyName, NodeKey, ProcessSpec, ServeKey, ServeOptions, TailcatCli, TailcatServer,
 };
@@ -25,6 +29,17 @@ const SESSION_TIMEOUT: Duration = Duration::from_secs(45);
 const SERVE_STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 /// Grace period for a transport process to exit after EOF before it is killed.
 const CLOSE_GRACE: Duration = Duration::from_secs(2);
+/// How long the agent gets to confirm a cancelled exec before the transport
+/// is torn down (which makes the agent kill the program anyway).
+const CANCEL_GRACE: Duration = Duration::from_secs(5);
+
+/// `remote exec` exit statuses for outcomes that are not the program's own,
+/// following `ssh` (255: the connection failed) and `timeout(1)` (124).
+const EXIT_TRANSPORT_FAILED: i32 = 255;
+/// The remote program could not be started (the shell's "command not found").
+const EXIT_NOT_STARTED: i32 = 127;
+const EXIT_TIMED_OUT: i32 = 124;
+const EXIT_CANCELLED: i32 = 130;
 
 #[derive(Subcommand, Debug)]
 pub enum RemoteCommand {
@@ -44,6 +59,39 @@ pub enum RemoteCommand {
         /// `tailcat genkey --client`). Repeatable.
         #[arg(long = "allow", value_name = "NODEKEY")]
         allow: Vec<String>,
+
+        /// Let clients run programs as the user running this server
+        /// (`remote exec`). Off by default. Refused together with a saved
+        /// --key unless --allow restricts who can connect.
+        #[arg(long)]
+        allow_exec: bool,
+    },
+
+    /// Run a program on the remote machine, streaming its output. Exits with
+    /// the program's status; otherwise 127 if it could not be started, 124 on
+    /// --timeout, 130 if cancelled (Ctrl-C), 255 if the transport failed.
+    ///
+    /// The program and its arguments are passed as a list, never through a
+    /// shell: `-- sh -c '...'` if a shell is really wanted.
+    Exec {
+        /// A tailcat address (tc...) or `local`.
+        target: String,
+
+        /// Absolute working directory on the remote machine.
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<String>,
+
+        /// Set an environment variable for the program. Repeatable.
+        #[arg(long = "env", value_name = "NAME=VALUE")]
+        env: Vec<String>,
+
+        /// Have the agent kill the program after this many seconds.
+        #[arg(long, value_name = "SECS", value_parser = clap::value_parser!(u64).range(1..))]
+        timeout: Option<u64>,
+
+        /// The program and its arguments, after `--`.
+        #[arg(last = true, required = true, value_name = "PROGRAM")]
+        command: Vec<String>,
     },
 
     /// Show the remote machine: host, OS, Telemaco version, network path.
@@ -65,29 +113,70 @@ pub enum RemoteCommand {
     /// Speak the protocol on stdin/stdout. Started by `tailcat serve` (or the
     /// local transport) once per connection; not meant to be run by hand.
     #[command(hide = true)]
-    Agent,
+    Agent {
+        /// Honor exec requests. Set by `remote serve --allow-exec`.
+        #[arg(long)]
+        allow_exec: bool,
+    },
 }
 
-pub async fn run(command: RemoteCommand) -> Result<()> {
+/// Runs a remote subcommand and returns the process exit status.
+pub async fn run(command: RemoteCommand) -> Result<i32> {
     match command {
-        RemoteCommand::Serve { key, allow } => serve(key, allow).await,
+        RemoteCommand::Serve {
+            key,
+            allow,
+            allow_exec,
+        } => serve(key, allow, allow_exec).await,
         RemoteCommand::Status { target } => status(&target).await,
         RemoteCommand::Ping { target, count } => ping(&target, count).await,
-        RemoteCommand::Agent => run_agent().await,
+        RemoteCommand::Exec {
+            target,
+            cwd,
+            env,
+            timeout,
+            command,
+        } => exec(&target, cwd, env, timeout, command).await,
+        RemoteCommand::Agent { allow_exec } => run_agent(allow_exec).await,
+    }
+    .map(|()| 0)
+    .or_else(|e| match e.downcast::<ExecStatus>() {
+        Ok(status) => Ok(status.0),
+        Err(e) => Err(e),
+    })
+}
+
+/// A non-zero exit status `remote exec` must propagate. Carried through
+/// `anyhow` so every command keeps the same `Result<()>` shape.
+#[derive(Debug)]
+struct ExecStatus(i32);
+
+impl std::fmt::Display for ExecStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "remote program exited with status {}", self.0)
     }
 }
 
+impl std::error::Error for ExecStatus {}
+
 /// How the local transport and `tailcat serve` launch an agent: this very
 /// executable, by absolute path (tailcat resolves bare names via PATH).
-fn agent_spec() -> Result<ProcessSpec> {
+fn agent_spec(allow_exec: bool) -> Result<ProcessSpec> {
     let exe = std::env::current_exe().context("cannot locate the telemaco executable")?;
-    Ok(ProcessSpec::new(exe).arg("remote").arg("agent"))
+    let spec = ProcessSpec::new(exe).arg("remote").arg("agent");
+    Ok(if allow_exec {
+        spec.arg("--allow-exec")
+    } else {
+        spec
+    })
 }
 
 fn transport_for(target: &str) -> Result<AnyTransport> {
     let target = RemoteTarget::parse(target)?;
     let mut config = TransportConfig::from_env();
-    config.local_agent = Some(agent_spec()?);
+    // The local agent is this same user on this same machine with no network
+    // in between, so exec crosses no trust boundary and is allowed.
+    config.local_agent = Some(agent_spec(true)?);
     Ok(select_transport(target, &config)?)
 }
 
@@ -189,7 +278,141 @@ async fn ping(target: &str, count: u32) -> Result<()> {
     Ok(())
 }
 
-async fn serve(key: Option<String>, allow: Vec<String>) -> Result<()> {
+/// Builds the wire request from CLI arguments, validating it locally so a
+/// typo fails before any connection is made.
+fn exec_request(
+    cwd: Option<String>,
+    env: Vec<String>,
+    timeout: Option<u64>,
+    command: Vec<String>,
+) -> Result<ExecRequest> {
+    let mut command = command.into_iter();
+    let program = command.next().context("no program given after --")?;
+    let env = env
+        .iter()
+        .map(|kv| {
+            let (name, value) = kv
+                .split_once('=')
+                .with_context(|| format!("--env expects NAME=VALUE, got {kv:?}"))?;
+            Ok(EnvVar {
+                name: name.into(),
+                value: value.into(),
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let request = ExecRequest {
+        program,
+        args: command.collect(),
+        env,
+        cwd,
+        timeout_secs: timeout,
+    };
+    request
+        .validate()
+        .map_err(|e| anyhow!("invalid command: {e}"))?;
+    Ok(request)
+}
+
+async fn exec(
+    target: &str,
+    cwd: Option<String>,
+    env: Vec<String>,
+    timeout: Option<u64>,
+    command: Vec<String>,
+) -> Result<()> {
+    let request = exec_request(cwd, env, timeout, command)?;
+    let status = match run_exec(target, request).await {
+        Ok(status) => status,
+        // Distinguish "could not run it" from anything the program returned.
+        Err(e) => {
+            eprintln!("Error: {e:?}");
+            let not_started = matches!(
+                e.downcast_ref::<ProtocolError>(),
+                Some(ProtocolError::Remote(r)) if r.code == ErrorCode::ExecFailed
+            );
+            if not_started {
+                EXIT_NOT_STARTED
+            } else {
+                EXIT_TRANSPORT_FAILED
+            }
+        }
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(ExecStatus(status).into())
+    }
+}
+
+async fn run_exec(target: &str, request: ExecRequest) -> Result<i32> {
+    let timeout = request.timeout_secs;
+    let transport = transport_for(target)?;
+    let mut conn = transport.connect().await?;
+
+    // Ctrl-C, or local stdout going away (`| head`), cancels the remote
+    // program rather than leaving it running.
+    let local_closed = Arc::new(tokio::sync::Notify::new());
+    let cancel = {
+        let local_closed = Arc::clone(&local_closed);
+        async move {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                () = local_closed.notified() => {}
+            }
+        }
+    };
+    let mut write_failed = false;
+    let on_output = |stream: OutputStream, chunk: &[u8]| {
+        let written = match stream {
+            OutputStream::Stdout => {
+                let mut out = std::io::stdout().lock();
+                out.write_all(chunk).and_then(|()| out.flush())
+            }
+            OutputStream::Stderr => {
+                let mut err = std::io::stderr().lock();
+                err.write_all(chunk).and_then(|()| err.flush())
+            }
+        };
+        if written.is_err() && !write_failed {
+            write_failed = true;
+            local_closed.notify_one();
+        }
+    };
+
+    let outcome = async {
+        let mut client = tokio::time::timeout(SESSION_TIMEOUT, RemoteClient::handshake(&mut conn))
+            .await
+            .map_err(|_| {
+                ProtocolError::Unexpected(format!(
+                    "timed out after {}s waiting for the remote agent",
+                    SESSION_TIMEOUT.as_secs()
+                ))
+            })??;
+        client.exec(request, cancel, CANCEL_GRACE, on_output).await
+    }
+    .await;
+    // No overall deadline here: a remote build may legitimately run for
+    // hours. `finish` only needs the timeout shape, so wrap as never-elapsed.
+    let exit = finish(conn, Ok(outcome)).await?;
+
+    Ok(match exit.end {
+        ExecEnd::Exited => match (exit.code, exit.signal) {
+            (Some(code), _) => code,
+            (None, Some(signal)) => 128 + signal,
+            (None, None) => EXIT_TRANSPORT_FAILED,
+        },
+        ExecEnd::TimedOut => {
+            eprintln!(
+                "telemaco: remote program killed after --timeout {}s",
+                timeout.unwrap_or_default()
+            );
+            EXIT_TIMED_OUT
+        }
+        ExecEnd::Cancelled => EXIT_CANCELLED,
+    })
+}
+
+async fn serve(key: Option<String>, allow: Vec<String>, allow_exec: bool) -> Result<()> {
     let key = match key {
         None => ServeKey::Ephemeral,
         Some(name) => ServeKey::Saved(KeyName::parse(&name).map_err(|e| anyhow!("--key: {e}"))?),
@@ -198,13 +421,21 @@ async fn serve(key: Option<String>, allow: Vec<String>) -> Result<()> {
         .iter()
         .map(|k| NodeKey::parse(k).map_err(|e| anyhow!("--allow: {e}")))
         .collect::<Result<Vec<_>>>()?;
+    // A stable address that anyone ever given it can reuse, fronting a
+    // command runner, is a permanent unauthenticated shell. Never implicitly.
+    if allow_exec && matches!(key, ServeKey::Saved(_)) && allow.is_empty() {
+        bail!(
+            "--allow-exec with a saved --key needs --allow: otherwise everyone who ever had \
+             this address could run commands here in any future run"
+        );
+    }
 
     let cli = TailcatCli::locate(TransportConfig::from_env().tailcat_bin.as_deref())?;
     cli.ensure_supported().await?;
     let opts = ServeOptions {
         key,
         allow,
-        agent: agent_spec()?,
+        agent: agent_spec(allow_exec)?,
     };
 
     eprintln!("Starting Tailcat...");
@@ -219,7 +450,15 @@ async fn serve(key: Option<String>, allow: Vec<String>) -> Result<()> {
             eprintln!("  key:   saved \"{name}\" (the address stays valid across restarts)")
         }
     }
-    eprintln!("  exec:  disabled");
+    if allow_exec {
+        let user = std::env::var("USER").unwrap_or_else(|_| "the current user".into());
+        eprintln!(
+            "  exec:  ENABLED, clients can run programs as {}",
+            sanitize_for_display(&user)
+        );
+    } else {
+        eprintln!("  exec:  disabled (enable with --allow-exec)");
+    }
     if opts.allow.is_empty() {
         eprintln!("  allow: anyone who has the address");
         eprintln!("Share the address only over a private channel: it is the credential.");
@@ -236,9 +475,13 @@ async fn serve(key: Option<String>, allow: Vec<String>) -> Result<()> {
     println!("{}", server.address().expose());
     eprintln!("Press Ctrl-C to stop.");
 
+    // Created once: recreating it per iteration would re-register the
+    // signal handlers on every relayed log line.
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
     let outcome = loop {
         tokio::select! {
-            _ = shutdown_signal() => break Ok(()),
+            () = &mut shutdown => break Ok(()),
             err = server.wait() => break Err(anyhow!(err).context("tailcat stopped")),
             Some(line) = lines.recv() => eprintln!("{line}"),
         }
@@ -273,11 +516,12 @@ async fn shutdown_signal() {
 
 /// One protocol session on stdio. Stdout belongs to the protocol, so every
 /// diagnostic goes to stderr, which `remote serve` shows the operator.
-async fn run_agent() -> Result<()> {
+async fn run_agent(allow_exec: bool) -> Result<()> {
     let peer = agent::peer_label(std::env::var("TAILCAT_PEER_KEY").ok().as_deref());
     let config = AgentConfig {
         telemaco_version: env!("TELEMACO_BUILD_VERSION").to_string(),
-        allow_exec: false,
+        allow_exec,
+        audit_peer: Some(peer.clone()),
     };
     eprintln!("telemaco agent: session from {peer}");
     let mut stdio = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());

@@ -743,7 +743,11 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Remote { command }) => {
             // Returns before update::maybe_notify: the agent's stdout is the
             // protocol channel, and none of these should contact GitHub.
-            return remote::run(command).await;
+            let status = remote::run(command).await?;
+            if status != 0 {
+                std::process::exit(status);
+            }
+            return Ok(());
         }
         None => {
             print_banner(args.port);
@@ -3053,9 +3057,9 @@ mod tests {
         };
         assert!(matches!(
             parse(&["telemaco", "remote", "serve"]).unwrap(),
-            RemoteCommand::Serve { key: None, ref allow } if allow.is_empty()
+            RemoteCommand::Serve { key: None, ref allow, allow_exec: false } if allow.is_empty()
         ));
-        let RemoteCommand::Serve { key, allow } = parse(&[
+        let RemoteCommand::Serve { key, allow, .. } = parse(&[
             "telemaco", "remote", "serve", "--key", "home", "--allow", "nodekey:aa", "--allow",
             "nodekey:bb",
         ])
@@ -3077,6 +3081,31 @@ mod tests {
         assert!(parse(&["telemaco", "remote", "status"]).is_err());
         assert!(parse(&["telemaco", "remote", "ping", "local", "-c", "0"]).is_err());
         assert!(parse(&["telemaco", "remote", "shell", "local"]).is_err());
-        assert!(matches!(parse(&["telemaco", "remote", "agent"]).unwrap(), RemoteCommand::Agent));
+        assert!(matches!(
+            parse(&["telemaco", "remote", "agent"]).unwrap(),
+            RemoteCommand::Agent { allow_exec: false }
+        ));
+        assert!(matches!(
+            parse(&["telemaco", "remote", "serve", "--allow-exec"]).unwrap(),
+            RemoteCommand::Serve { allow_exec: true, .. }
+        ));
+        // The remote argv is preserved exactly, flags included.
+        let RemoteCommand::Exec { target, cwd, env, timeout, command } = parse(&[
+            "telemaco", "remote", "exec", "local", "--cwd", "/tmp", "--env", "A=1", "--timeout",
+            "5", "--", "ls", "-la", "--color", "a b", "",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(target, "local");
+        assert_eq!(cwd.as_deref(), Some("/tmp"));
+        assert_eq!(env, ["A=1"]);
+        assert_eq!(timeout, Some(5));
+        assert_eq!(command, ["ls", "-la", "--color", "a b", ""]);
+        // `--` is required: without it the remote command could be taken for
+        // telemaco's own flags.
+        assert!(parse(&["telemaco", "remote", "exec", "local", "ls"]).is_err());
+        assert!(parse(&["telemaco", "remote", "exec", "local", "--"]).is_err());
+        assert!(parse(&["telemaco", "remote", "exec", "local", "--timeout", "0", "--", "ls"]).is_err());
     }
 }

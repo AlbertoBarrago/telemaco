@@ -13,7 +13,7 @@ pub mod protocol;
 pub mod transport;
 
 pub use address::{AddressError, TailcatAddress};
-pub use client::RemoteClient;
+pub use client::{RemoteClient, RemoteExecutionResult};
 pub use transport::{
     select_transport, AnyTransport, Connection, PathInfo, RemoteTarget, Transport, TransportConfig,
     TransportError, TransportKind,

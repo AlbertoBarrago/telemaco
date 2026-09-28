@@ -36,6 +36,95 @@ pub enum Request {
     /// `deny_unknown_fields` for unit variants of internally tagged enums,
     /// so `{"type":"status","x":1}` would otherwise be accepted.
     Status {},
+    /// Run one program. The agent answers with any number of
+    /// [`Response::Output`] frames followed by exactly one
+    /// [`Response::Exited`], or with a single [`Response::Error`].
+    Exec(ExecRequest),
+    /// Only valid while an exec is running: kill it. The agent still ends
+    /// the exec with [`Response::Exited`] (`end: cancelled`).
+    Cancel {},
+}
+
+/// A structured command: never a shell string. If the caller wants a shell
+/// they name it as the program (`sh`, `-c`, `...`), explicitly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecRequest {
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Added to (or overriding) the agent's inherited environment.
+    #[serde(default)]
+    pub env: Vec<EnvVar>,
+    /// Absolute working directory; the agent's own when absent.
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// Kill the program after this many seconds.
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnvVar {
+    pub name: String,
+    pub value: String,
+}
+
+pub const MAX_EXEC_ARGS: usize = 1024;
+pub const MAX_EXEC_ENV: usize = 256;
+pub const MAX_PROGRAM_CHARS: usize = 4096;
+
+impl ExecRequest {
+    /// Rejects anything the OS would misinterpret or that has no business
+    /// crossing the wire: NUL bytes (which truncate C strings), malformed
+    /// variable names, relative working directories, absurd counts.
+    pub fn validate(&self) -> Result<(), String> {
+        let no_nul = |what: &str, s: &str| {
+            if s.contains('\0') {
+                Err(format!("{what} contains a NUL byte"))
+            } else {
+                Ok(())
+            }
+        };
+        if self.program.is_empty() {
+            return Err("program is empty".into());
+        }
+        if self.program.chars().count() > MAX_PROGRAM_CHARS {
+            return Err("program name is too long".into());
+        }
+        no_nul("program", &self.program)?;
+        if self.args.len() > MAX_EXEC_ARGS {
+            return Err(format!("more than {MAX_EXEC_ARGS} arguments"));
+        }
+        for a in &self.args {
+            no_nul("argument", a)?;
+        }
+        if self.env.len() > MAX_EXEC_ENV {
+            return Err(format!("more than {MAX_EXEC_ENV} environment variables"));
+        }
+        for v in &self.env {
+            let mut chars = v.name.chars();
+            let valid_name = chars
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                && chars.all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !valid_name {
+                return Err("environment variable names must match [A-Za-z_][A-Za-z0-9_]*".into());
+            }
+            no_nul("environment value", &v.value)?;
+        }
+        if let Some(cwd) = &self.cwd {
+            no_nul("cwd", cwd)?;
+            if !std::path::Path::new(cwd).is_absolute() {
+                return Err("cwd must be an absolute path".into());
+            }
+        }
+        if self.timeout_secs == Some(0) {
+            return Err("timeout must be at least 1 second".into());
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,7 +138,61 @@ pub enum Response {
         nonce: u64,
     },
     Status(StatusInfo),
+    /// A chunk of a running program's output, base64 encoded (output is
+    /// arbitrary bytes, JSON strings are not).
+    Output {
+        stream: OutputStream,
+        data: String,
+    },
+    Exited(ExecExit),
     Error(RemoteError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+/// How an exec ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecExit {
+    /// The exit code, when the program exited normally.
+    pub code: Option<i32>,
+    /// The terminating signal on unix, when there was one.
+    pub signal: Option<i32>,
+    pub end: ExecEnd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecEnd {
+    /// The program finished on its own.
+    Exited,
+    /// The agent killed it at `timeout_secs`.
+    TimedOut,
+    /// The agent killed it on the client's request.
+    Cancelled,
+}
+
+impl Response {
+    pub fn output(stream: OutputStream, bytes: &[u8]) -> Self {
+        use base64::Engine as _;
+        Response::Output {
+            stream,
+            data: base64::engine::general_purpose::STANDARD.encode(bytes),
+        }
+    }
+}
+
+/// Decodes the payload of a [`Response::Output`].
+pub fn decode_output(data: &str) -> Result<Vec<u8>, ProtocolError> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| ProtocolError::Malformed(format!("output chunk: {e}")))
 }
 
 /// What an authenticated client may learn about the agent's machine.
@@ -91,6 +234,8 @@ pub enum ErrorCode {
     Forbidden,
     /// The agent failed while handling a valid request.
     Internal,
+    /// The program could not be started (not found, not executable, bad cwd).
+    ExecFailed,
 }
 
 impl std::fmt::Display for ErrorCode {
@@ -100,6 +245,7 @@ impl std::fmt::Display for ErrorCode {
             ErrorCode::UnsupportedVersion => "unsupported_version",
             ErrorCode::Forbidden => "forbidden",
             ErrorCode::Internal => "internal",
+            ErrorCode::ExecFailed => "exec_failed",
         })
     }
 }
@@ -356,6 +502,96 @@ mod tests {
         frame.extend_from_slice(b"abc");
         let err = read_frame(&mut frame.as_slice()).await.unwrap_err();
         assert!(err.is_disconnect(), "{err}");
+    }
+
+    fn exec(program: &str) -> ExecRequest {
+        ExecRequest {
+            program: program.into(),
+            args: vec![],
+            env: vec![],
+            cwd: None,
+            timeout_secs: None,
+        }
+    }
+
+    #[test]
+    fn exec_messages_round_trip_with_arguments_intact() {
+        let req = Request::Exec(ExecRequest {
+            program: "printf".into(),
+            args: vec![
+                "%s|".into(),
+                "two words".into(),
+                "$(id)".into(),
+                "".into(),
+                "é\n".into(),
+            ],
+            env: vec![EnvVar {
+                name: "FOO".into(),
+                value: "a=b c".into(),
+            }],
+            cwd: Some("/tmp".into()),
+            timeout_secs: Some(5),
+        });
+        let back: Request = decode(&serde_json::to_vec(&req).unwrap()).unwrap();
+        assert_eq!(back, req);
+        let minimal: Request = decode(br#"{"type":"exec","program":"uname"}"#).unwrap();
+        assert_eq!(minimal, Request::Exec(exec("uname")));
+        let out = Response::output(OutputStream::Stderr, b"\x00\xffbin");
+        let Response::Output { stream, data } = decode(&serde_json::to_vec(&out).unwrap()).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!(stream, OutputStream::Stderr);
+        assert_eq!(decode_output(&data).unwrap(), b"\x00\xffbin");
+        assert!(decode_output("not base64!").is_err());
+        let exited = Response::Exited(ExecExit {
+            code: None,
+            signal: Some(9),
+            end: ExecEnd::Cancelled,
+        });
+        let back: Response = decode(&serde_json::to_vec(&exited).unwrap()).unwrap();
+        assert_eq!(back, exited);
+    }
+
+    #[test]
+    fn exec_rejects_a_shell_string_field_and_unknown_fields() {
+        assert!(decode::<Request>(br#"{"type":"exec","program":"ls","shell":true}"#).is_err());
+        assert!(decode::<Request>(br#"{"type":"exec","command":"ls -la"}"#).is_err());
+        assert!(decode::<Request>(br#"{"type":"exec","program":"ls","args":"-la"}"#).is_err());
+        assert!(decode::<Request>(br#"{"type":"cancel","now":true}"#).is_err());
+    }
+
+    #[test]
+    fn exec_validation() {
+        assert!(exec("uname").validate().is_ok());
+        assert!(exec("").validate().is_err());
+        assert!(exec("ls\0rm").validate().is_err());
+        let mut r = exec("ls");
+        r.args = vec!["a\0b".into()];
+        assert!(r.validate().is_err());
+        let mut r = exec("ls");
+        r.args = vec![String::new(); MAX_EXEC_ARGS + 1];
+        assert!(r.validate().is_err());
+        for bad in ["", "1X", "A-B", "A B", "A=B"] {
+            let mut r = exec("ls");
+            r.env = vec![EnvVar {
+                name: bad.into(),
+                value: "v".into(),
+            }];
+            assert!(r.validate().is_err(), "{bad:?}");
+        }
+        let mut r = exec("ls");
+        r.env = vec![EnvVar {
+            name: "_OK_1".into(),
+            value: "v".into(),
+        }];
+        assert!(r.validate().is_ok());
+        let mut r = exec("ls");
+        r.cwd = Some("relative/dir".into());
+        assert!(r.validate().is_err());
+        let mut r = exec("ls");
+        r.timeout_secs = Some(0);
+        assert!(r.validate().is_err());
     }
 
     #[test]

@@ -1,10 +1,26 @@
 //! Client side of the remote protocol, over any byte stream.
 
+use std::future::Future;
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use crate::protocol::{self, ProtocolError, Request, Response, StatusInfo, PROTOCOL_VERSION};
+use crate::protocol::{
+    self, ExecExit, ExecRequest, OutputStream, ProtocolError, Request, Response, StatusInfo,
+    PROTOCOL_VERSION,
+};
+
+/// Everything an exec produced, for callers that want it in memory rather
+/// than streamed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteExecutionResult {
+    pub exit: ExecExit,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    /// Output beyond the caller's cap was dropped (the program still ran to
+    /// completion).
+    pub truncated: bool,
+}
 
 /// A handshaken session. Borrows the stream so the caller keeps the
 /// transport connection and can ask it why the stream died.
@@ -65,6 +81,93 @@ impl<'a, S: AsyncRead + AsyncWrite + Unpin> RemoteClient<'a, S> {
         }
     }
 
+    /// Runs a program on the agent, handing each output chunk to
+    /// `on_output` as it arrives. When `cancel` resolves, the agent is asked
+    /// to kill the program; if it does not confirm within `cancel_grace`,
+    /// this returns an error and the caller should drop the transport, which
+    /// makes the agent kill the program anyway.
+    pub async fn exec<F, C>(
+        &mut self,
+        request: ExecRequest,
+        cancel: C,
+        cancel_grace: Duration,
+        mut on_output: F,
+    ) -> Result<ExecExit, ProtocolError>
+    where
+        F: FnMut(OutputStream, &[u8]),
+        C: Future<Output = ()>,
+    {
+        let (mut rd, mut wr) = tokio::io::split(&mut *self.stream);
+        protocol::send(&mut wr, &Request::Exec(request)).await?;
+        // One persistent reader future: never recreated inside the select,
+        // so a partially read frame is never dropped.
+        let reader = async {
+            loop {
+                match protocol::recv(&mut rd).await? {
+                    Response::Output { stream, data } => {
+                        on_output(stream, &protocol::decode_output(&data)?)
+                    }
+                    Response::Exited(exit) => return Ok(exit),
+                    Response::Error(e) => return Err(e.into()),
+                    other => return Err(unexpected(&other)),
+                }
+            }
+        };
+        tokio::pin!(reader);
+        tokio::pin!(cancel);
+        // Disarmed until a cancel is sent; the branch is gated on `cancelled`.
+        let grace = tokio::time::sleep(Duration::from_secs(365 * 24 * 3600));
+        tokio::pin!(grace);
+        let mut cancelled = false;
+        loop {
+            tokio::select! {
+                result = &mut reader => return result,
+                () = &mut cancel, if !cancelled => {
+                    cancelled = true;
+                    protocol::send(&mut wr, &Request::Cancel {}).await?;
+                    grace.as_mut().reset(tokio::time::Instant::now() + cancel_grace);
+                }
+                () = &mut grace, if cancelled => {
+                    return Err(ProtocolError::Unexpected(
+                        "the agent did not confirm cancellation".into(),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// [`RemoteClient::exec`] collecting output in memory, keeping at most
+    /// `max_bytes` of stdout and of stderr each.
+    pub async fn exec_collect(
+        &mut self,
+        request: ExecRequest,
+        max_bytes: usize,
+    ) -> Result<RemoteExecutionResult, ProtocolError> {
+        let (mut stdout, mut stderr, mut truncated) = (Vec::new(), Vec::new(), false);
+        let exit = self
+            .exec(
+                request,
+                std::future::pending(),
+                Duration::ZERO,
+                |stream, chunk| {
+                    let buf = match stream {
+                        OutputStream::Stdout => &mut stdout,
+                        OutputStream::Stderr => &mut stderr,
+                    };
+                    let room = max_bytes.saturating_sub(buf.len());
+                    truncated |= chunk.len() > room;
+                    buf.extend_from_slice(&chunk[..chunk.len().min(room)]);
+                },
+            )
+            .await?;
+        Ok(RemoteExecutionResult {
+            exit,
+            stdout,
+            stderr,
+            truncated,
+        })
+    }
+
     async fn call(&mut self, request: &Request) -> Result<Response, ProtocolError> {
         protocol::send(self.stream, request).await?;
         match protocol::recv(self.stream).await? {
@@ -79,6 +182,8 @@ fn unexpected(r: &Response) -> ProtocolError {
         Response::Hello { .. } => "hello",
         Response::Pong { .. } => "pong",
         Response::Status(_) => "status",
+        Response::Output { .. } => "output",
+        Response::Exited(_) => "exited",
         Response::Error(_) => "error",
     };
     ProtocolError::Unexpected(kind.to_string())
@@ -96,6 +201,7 @@ mod tests {
         let cfg = AgentConfig {
             telemaco_version: "1.2.3".into(),
             allow_exec: true,
+            audit_peer: None,
         };
         let agent = tokio::spawn(async move { agent::serve(&mut s, &cfg).await });
         let mut client = RemoteClient::handshake(&mut c).await.unwrap();
