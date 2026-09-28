@@ -1,2 +1,2 @@
-window.ALL_CRATES = ["telemaco","telemaco_browser","telemaco_cdp","telemaco_dom","telemaco_js","telemaco_mcp","telemaco_net","telemaco_render","telemaco_worker"];
-//{"start":21,"fragment_lengths":[10,19,15,15,14,15,15,18,18]}
+window.ALL_CRATES = ["telemaco","telemaco_browser","telemaco_cdp","telemaco_dom","telemaco_js","telemaco_mcp","telemaco_net","telemaco_remote","telemaco_render","telemaco_worker"];
+//{"start":21,"fragment_lengths":[10,19,15,15,14,15,15,18,18,18]}
