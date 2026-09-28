@@ -7,10 +7,14 @@
 //! external `tailcat` CLI process, never linked or reimplemented.
 
 pub mod address;
+pub mod agent;
+pub mod client;
+pub mod protocol;
 pub mod transport;
 
 pub use address::{AddressError, TailcatAddress};
+pub use client::RemoteClient;
 pub use transport::{
-    select_transport, AnyTransport, Connection, RemoteTarget, Transport, TransportConfig,
+    select_transport, AnyTransport, Connection, PathInfo, RemoteTarget, Transport, TransportConfig,
     TransportError, TransportKind,
 };

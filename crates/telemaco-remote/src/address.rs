@@ -78,6 +78,30 @@ impl TailcatAddress {
     }
 }
 
+/// Redacts anything shaped like a tailcat address in `text`, for output
+/// whose addresses are not known in advance (e.g. `tailcat serve` announces
+/// its fresh address on stderr before Telemaco has read it from stdout).
+/// Over-redacting a long `tc...` identifier that is not an address is fine.
+pub fn redact_tailcat_tokens(text: &str) -> String {
+    let is_addr_char = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(|c: char| is_addr_char(c)) {
+        out.push_str(&rest[..start]);
+        let token_len = rest[start..]
+            .find(|c: char| !is_addr_char(c))
+            .unwrap_or(rest.len() - start);
+        let token = &rest[start..start + token_len];
+        match TailcatAddress::parse(token) {
+            Ok(addr) => out.push_str(&addr.redacted()),
+            Err(_) => out.push_str(token),
+        }
+        rest = &rest[start + token_len..];
+    }
+    out.push_str(rest);
+    out
+}
+
 impl FromStr for TailcatAddress {
     type Err = AddressError;
 
@@ -160,6 +184,19 @@ pub(crate) mod tests {
             TailcatAddress::parse(&hostile),
             Err(AddressError::InvalidCharacter(SAMPLE.len()))
         );
+    }
+
+    #[test]
+    fn token_redaction_finds_unknown_addresses() {
+        let line = format!("# 🐈 Server listening with new address: {SAMPLE}\n");
+        let out = redact_tailcat_tokens(&line);
+        assert_eq!(
+            out,
+            "# 🐈 Server listening with new address: tcomFw...****\n"
+        );
+        // Ordinary words, including short `tc` ones, pass through untouched.
+        let plain = "tcp dial to tcfoo failed: context deadline exceeded";
+        assert_eq!(redact_tailcat_tokens(plain), plain);
     }
 
     #[test]

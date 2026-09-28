@@ -3224,6 +3224,7 @@ dependencies = [
  "telemaco-js",
  "telemaco-mcp",
  "telemaco-net",
+ "telemaco-remote",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3319,6 +3320,8 @@ dependencies = [
 name = "telemaco-remote"
 version = "0.2.1"
 dependencies = [
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

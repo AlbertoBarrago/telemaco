@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::process::run_captured;
-use super::{Connection, ProcessSpec, Transport, TransportError, TransportKind};
+use super::{Connection, PathInfo, ProcessSpec, Transport, TransportError, TransportKind};
 use crate::address::TailcatAddress;
 
 /// Oldest tailcat release this integration was checked against.
@@ -28,6 +28,9 @@ pub const MIN_TAILCAT_VERSION: (u32, u32, u32) = (0, 7, 0);
 pub const AGENT_PORT: u16 = 7431;
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
+/// `tailcat ping` builds its own tunnel (DERP bootstrap included) before the
+/// ping itself, so it gets a budget of its own on top of `--timeout`.
+const PING_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A located `tailcat` executable.
 #[derive(Debug, Clone)]
@@ -172,10 +175,43 @@ impl Transport for TailcatTransport {
         TransportKind::Tailcat
     }
 
+    /// Checks the tailcat version first (one short `tailcat version` run),
+    /// so an outdated tailcat fails with a clear message instead of an
+    /// obscure CLI error halfway through a session.
     async fn connect(&self) -> Result<Connection, TransportError> {
+        self.cli.ensure_supported().await?;
         tracing::debug!(remote = %self.addr, "connecting over tailcat");
         Connection::spawn(self.client_spec())
     }
+
+    /// Runs `tailcat ping`, which reports whether the tunnel currently goes
+    /// direct or through a DERP relay.
+    async fn path(&self) -> Result<Option<PathInfo>, TransportError> {
+        let spec = self
+            .cli
+            .spec()
+            .arg("ping")
+            .arg("--timeout=10s")
+            .secret(self.addr.clone());
+        let out = run_captured(&spec, PING_TIMEOUT).await?;
+        Ok(parse_pong(&out.stdout))
+    }
+}
+
+/// Parses tailcat's `pong in 1.2ms via 203.0.113.7:41641` or
+/// `pong in 42.1ms via DERP(sfo)`. The peer's endpoint address is dropped:
+/// "direct" is the useful fact, the IP is not worth displaying.
+fn parse_pong(stdout: &str) -> Option<PathInfo> {
+    let line = stdout.lines().rev().find(|l| l.starts_with("pong in "))?;
+    let (latency, via) = line.strip_prefix("pong in ")?.split_once(" via ")?;
+    let relay = via
+        .strip_prefix("DERP(")
+        .and_then(|r| r.strip_suffix(')'))
+        .map(crate::protocol::sanitize_for_display);
+    Some(PathInfo {
+        relay,
+        latency: crate::protocol::sanitize_for_display(latency),
+    })
 }
 
 fn candidate_names() -> impl Iterator<Item = &'static str> {
@@ -201,6 +237,23 @@ fn is_executable(p: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pong_parsing() {
+        let direct = parse_pong("pong in 1.2ms via 203.0.113.7:41641\n").unwrap();
+        assert_eq!(
+            direct,
+            PathInfo {
+                relay: None,
+                latency: "1.2ms".into()
+            }
+        );
+        assert_eq!(direct.to_string(), "direct, 1.2ms");
+        let derp = parse_pong("pong in 42.1ms via DERP(sfo)").unwrap();
+        assert_eq!(derp.relay.as_deref(), Some("sfo"));
+        assert_eq!(derp.to_string(), "relayed via DERP sfo, 42.1ms");
+        assert_eq!(parse_pong("garbage"), None);
+    }
 
     #[test]
     fn version_parsing() {
@@ -274,6 +327,17 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn connect_refuses_an_outdated_tailcat() {
+            let cli = TailcatCli::locate(Some(&fake_bin("tailcat", "echo v0.4.0"))).unwrap();
+            let t = TailcatTransport::new(cli, TailcatAddress::parse(SAMPLE).unwrap());
+            let err = t.connect().await.unwrap_err();
+            assert!(
+                matches!(err, TransportError::UnsupportedTailcatVersion { .. }),
+                "{err}"
+            );
+        }
+
+        #[tokio::test]
         async fn version_failure_keeps_tailcat_stderr() {
             let bin = fake_bin(
                 "tailcat",
@@ -289,7 +353,11 @@ mod tests {
 
         #[tokio::test]
         async fn client_argv_is_address_then_agent_port() {
-            let bin = fake_bin("tailcat", r#"for a in "$@"; do printf '[%s]\n' "$a"; done"#);
+            let bin = fake_bin(
+                "tailcat",
+                r#"[ "$1" = version ] && { echo v0.7.0; exit 0; }
+for a in "$@"; do printf '[%s]\n' "$a"; done"#,
+            );
             let cli = TailcatCli::locate(Some(&bin)).unwrap();
             let t = TailcatTransport::new(cli, TailcatAddress::parse(SAMPLE).unwrap());
             let mut conn = t.connect().await.unwrap();
@@ -303,7 +371,8 @@ mod tests {
         async fn early_exit_surfaces_as_failure_with_stderr() {
             let bin = fake_bin(
                 "tailcat",
-                r#"echo "tailcat: handshake with $1 timed out" >&2; exit 1"#,
+                r#"[ "$1" = version ] && { echo v0.7.0; exit 0; }
+echo "tailcat: handshake with $1 timed out" >&2; exit 1"#,
             );
             let cli = TailcatCli::locate(Some(&bin)).unwrap();
             let t = TailcatTransport::new(cli, TailcatAddress::parse(SAMPLE).unwrap());

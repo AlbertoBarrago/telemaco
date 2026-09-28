@@ -1,6 +1,7 @@
 mod update;
 mod focus;
 mod installer;
+mod remote;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -328,6 +329,13 @@ enum Command {
         /// Cursor's `sessionStart`, which reads `additional_context`.
         #[arg(long, default_value = "text")]
         format: String,
+    },
+
+    /// Manage another machine over a remote transport (Tailcat): status,
+    /// connectivity, and a Telemaco agent to serve.
+    Remote {
+        #[command(subcommand)]
+        command: remote::RemoteCommand,
     },
 }
 
@@ -731,6 +739,11 @@ async fn main() -> anyhow::Result<()> {
                     )
                 })?;
             installer::prompt_hook::run_prompt_hook(format)?;
+        }
+        Some(Command::Remote { command }) => {
+            // Returns before update::maybe_notify: the agent's stdout is the
+            // protocol channel, and none of these should contact GitHub.
+            return remote::run(command).await;
         }
         None => {
             print_banner(args.port);
@@ -3028,5 +3041,42 @@ mod tests {
         assert_eq!(lines.len(), 1, "got {lines:?}");
         assert!(lines[0].contains("\"https://example.test/ok.html\""));
         assert!(lines[0].contains("\"iframe\""));
+    }
+
+    #[test]
+    fn remote_subcommands_parse() {
+        use crate::remote::RemoteCommand;
+        let parse = |argv: &[&str]| match Args::try_parse_from(argv).map(|a| a.command) {
+            Ok(Some(Command::Remote { command })) => Ok(command),
+            Ok(_) => panic!("expected remote command for {argv:?}"),
+            Err(e) => Err(e),
+        };
+        assert!(matches!(
+            parse(&["telemaco", "remote", "serve"]).unwrap(),
+            RemoteCommand::Serve { key: None, ref allow } if allow.is_empty()
+        ));
+        let RemoteCommand::Serve { key, allow } = parse(&[
+            "telemaco", "remote", "serve", "--key", "home", "--allow", "nodekey:aa", "--allow",
+            "nodekey:bb",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(key.as_deref(), Some("home"));
+        assert_eq!(allow, ["nodekey:aa", "nodekey:bb"]);
+        assert!(matches!(
+            parse(&["telemaco", "remote", "status", "local"]).unwrap(),
+            RemoteCommand::Status { ref target } if target == "local"
+        ));
+        assert!(matches!(
+            parse(&["telemaco", "remote", "ping", "local", "-c", "2"]).unwrap(),
+            RemoteCommand::Ping { count: 2, .. }
+        ));
+        // `-v` stays the global verbose flag inside remote subcommands.
+        assert!(Args::try_parse_from(["telemaco", "remote", "-v", "status", "local"]).unwrap().verbose);
+        assert!(parse(&["telemaco", "remote", "status"]).is_err());
+        assert!(parse(&["telemaco", "remote", "ping", "local", "-c", "0"]).is_err());
+        assert!(parse(&["telemaco", "remote", "shell", "local"]).is_err());
+        assert!(matches!(parse(&["telemaco", "remote", "agent"]).unwrap(), RemoteCommand::Agent));
     }
 }

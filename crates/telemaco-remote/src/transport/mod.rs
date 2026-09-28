@@ -8,6 +8,7 @@
 mod local;
 mod process;
 pub mod tailcat;
+pub mod tailcat_server;
 
 use std::fmt;
 use std::future::Future;
@@ -18,6 +19,7 @@ use crate::address::{AddressError, TailcatAddress};
 pub use local::LocalTransport;
 pub use process::{Arg, CapturedOutput, Connection, ProcessSpec};
 pub use tailcat::{TailcatCli, TailcatTransport, TailcatVersion};
+pub use tailcat_server::{KeyName, NodeKey, ServeKey, ServeOptions, TailcatServer};
 
 /// A way to open a byte stream to a remote agent.
 pub trait Transport {
@@ -26,6 +28,31 @@ pub trait Transport {
 
     /// Opens a new stream to the agent. Each call is an independent session.
     fn connect(&self) -> impl Future<Output = Result<Connection, TransportError>> + Send;
+
+    /// How traffic currently reaches the remote (direct, relayed, ...), for
+    /// transports that can tell. `Ok(None)` means the question does not
+    /// apply, as for the local transport.
+    fn path(&self) -> impl Future<Output = Result<Option<PathInfo>, TransportError>> + Send {
+        async { Ok(None) }
+    }
+}
+
+/// Network path to the remote, as reported by the transport.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathInfo {
+    /// `None` for a direct peer-to-peer path, else the relay's name.
+    pub relay: Option<String>,
+    /// Round-trip time as the transport formatted it (e.g. `1.2ms`).
+    pub latency: String,
+}
+
+impl fmt::Display for PathInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.relay {
+            None => write!(f, "direct, {}", self.latency),
+            Some(relay) => write!(f, "relayed via DERP {relay}, {}", self.latency),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +177,13 @@ impl Transport for AnyTransport {
         match self {
             AnyTransport::Tailcat(t) => t.connect().await,
             AnyTransport::Local(t) => t.connect().await,
+        }
+    }
+
+    async fn path(&self) -> Result<Option<PathInfo>, TransportError> {
+        match self {
+            AnyTransport::Tailcat(t) => t.path().await,
+            AnyTransport::Local(t) => t.path().await,
         }
     }
 }

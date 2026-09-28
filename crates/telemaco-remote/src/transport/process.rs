@@ -79,7 +79,7 @@ impl ProcessSpec {
             })
     }
 
-    fn command(&self) -> Command {
+    pub(crate) fn command(&self) -> Command {
         let mut cmd = Command::new(&self.program);
         for arg in &self.args {
             match arg {
@@ -91,7 +91,7 @@ impl ProcessSpec {
         cmd
     }
 
-    fn spawn_error(&self, source: io::Error) -> TransportError {
+    pub(crate) fn spawn_error(&self, source: io::Error) -> TransportError {
         TransportError::Spawn {
             program: self.display_name(),
             source,
