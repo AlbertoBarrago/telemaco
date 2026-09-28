@@ -8,6 +8,7 @@ members = [
     "crates/telemaco-js",
     "crates/telemaco-mcp",
     "crates/telemaco-render",
+    "crates/telemaco-remote",
     "crates/telemaco-cli",
     "crates/telemaco",
 ]

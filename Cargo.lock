@@ -3316,6 +3316,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "telemaco-remote"
+version = "0.2.1"
+dependencies = [
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "telemaco-render"
 version = "0.2.1"
 dependencies = [
