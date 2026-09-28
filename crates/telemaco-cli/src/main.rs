@@ -3057,7 +3057,7 @@ mod tests {
         };
         assert!(matches!(
             parse(&["telemaco", "remote", "serve"]).unwrap(),
-            RemoteCommand::Serve { key: None, ref allow, allow_exec: false } if allow.is_empty()
+            RemoteCommand::Serve { key: None, ref allow, allow_exec: false, ref forward_ports } if allow.is_empty() && forward_ports.is_empty()
         ));
         let RemoteCommand::Serve { key, allow, .. } = parse(&[
             "telemaco", "remote", "serve", "--key", "home", "--allow", "nodekey:aa", "--allow",
@@ -3083,12 +3083,37 @@ mod tests {
         assert!(parse(&["telemaco", "remote", "shell", "local"]).is_err());
         assert!(matches!(
             parse(&["telemaco", "remote", "agent"]).unwrap(),
-            RemoteCommand::Agent { allow_exec: false }
+            RemoteCommand::Agent { allow_exec: false, .. }
         ));
         assert!(matches!(
             parse(&["telemaco", "remote", "serve", "--allow-exec"]).unwrap(),
             RemoteCommand::Serve { allow_exec: true, .. }
         ));
+        let RemoteCommand::Serve { forward_ports, .. } = parse(&[
+            "telemaco", "remote", "serve", "--forward-port", "5432", "--forward-port", "8080",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(forward_ports, [5432, 8080]);
+        let RemoteCommand::Forward { remote_port, local_port, bind, .. } =
+            parse(&["telemaco", "remote", "forward", "tcX", "5432"]).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!((remote_port, local_port), (5432, None));
+        assert!(bind.is_loopback(), "forward must default to loopback");
+        let RemoteCommand::Forward { local_port, bind, .. } = parse(&[
+            "telemaco", "remote", "forward", "tcX", "5432", "--local-port", "0", "--bind",
+            "0.0.0.0",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(local_port, Some(0));
+        assert!(bind.is_unspecified());
+        assert!(parse(&["telemaco", "remote", "forward", "tcX", "0"]).is_err());
+        assert!(parse(&["telemaco", "remote", "forward", "tcX", "5432", "--bind", "x"]).is_err());
         // The remote argv is preserved exactly, flags included.
         let RemoteCommand::Exec { target, cwd, env, timeout, command } = parse(&[
             "telemaco", "remote", "exec", "local", "--cwd", "/tmp", "--env", "A=1", "--timeout",

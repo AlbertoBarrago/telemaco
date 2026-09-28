@@ -205,6 +205,9 @@ pub struct StatusInfo {
     pub telemaco_version: String,
     pub protocol_version: u32,
     pub exec_enabled: bool,
+    /// Local ports of the agent's machine the operator chose to expose
+    /// (`remote serve --forward-port`), reachable with `remote forward`.
+    pub forwarded_ports: Vec<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
@@ -382,6 +385,7 @@ mod tests {
             telemaco_version: "0.2.1".into(),
             protocol_version: PROTOCOL_VERSION,
             exec_enabled: false,
+            forwarded_ports: vec![5432],
         }
     }
 
@@ -447,7 +451,7 @@ mod tests {
                 "{body:?} -> {err}"
             );
         }
-        let extra = br#"{"type":"status","hostname":null,"os":"x","arch":"y","telemaco_version":"z","protocol_version":1,"exec_enabled":true,"root":1}"#;
+        let extra = br#"{"type":"status","hostname":null,"os":"x","arch":"y","telemaco_version":"z","protocol_version":1,"exec_enabled":true,"forwarded_ports":[],"root":1}"#;
         assert!(decode::<Response>(extra).is_err());
     }
 

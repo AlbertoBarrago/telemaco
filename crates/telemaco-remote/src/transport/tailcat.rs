@@ -16,6 +16,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::process::run_captured;
+use tokio::sync::mpsc;
+
+use super::tailcat_forward::{ForwardRequest, Forwarder};
 use super::{Connection, PathInfo, ProcessSpec, Transport, TransportError, TransportKind};
 use crate::address::TailcatAddress;
 
@@ -31,6 +34,9 @@ const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 /// `tailcat ping` builds its own tunnel (DERP bootstrap included) before the
 /// ping itself, so it gets a budget of its own on top of `--timeout`.
 const PING_TIMEOUT: Duration = Duration::from_secs(15);
+/// `tailcat forward` binds its listener before touching the network, so the
+/// announcement comes quickly; this only guards against a wedged process.
+const FORWARD_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// A located `tailcat` executable.
 #[derive(Debug, Clone)]
@@ -195,6 +201,15 @@ impl Transport for TailcatTransport {
             .secret(self.addr.clone());
         let out = run_captured(&spec, PING_TIMEOUT).await?;
         Ok(parse_pong(&out.stdout))
+    }
+
+    async fn forward(
+        &self,
+        request: ForwardRequest,
+    ) -> Result<(Forwarder, mpsc::Receiver<String>), TransportError> {
+        self.cli.ensure_supported().await?;
+        let spec = Forwarder::spec(&self.cli, &self.addr, &request);
+        Forwarder::start(spec, FORWARD_STARTUP_TIMEOUT).await
     }
 }
 

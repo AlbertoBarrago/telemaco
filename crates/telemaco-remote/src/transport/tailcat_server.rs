@@ -21,6 +21,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, BufReader};
 use tokio::process::Child;
 use tokio::sync::mpsc;
 
+use super::tailcat::AGENT_PORT;
 use super::{ProcessSpec, TailcatCli, TransportError};
 use crate::address::{redact_tailcat_tokens, TailcatAddress};
 
@@ -94,6 +95,20 @@ pub struct ServeOptions {
     /// The agent command tailcat runs per connection. Must be an absolute
     /// path: tailcat resolves it with `LookPath` otherwise.
     pub agent: ProcessSpec,
+    /// Local ports to expose through the tunnel (to `localhost` on this
+    /// machine only). Empty by default: nothing but the agent is reachable.
+    pub forward_ports: Vec<u16>,
+}
+
+/// Checks a port offered with `--forward-port`.
+pub fn validate_forward_port(port: u16) -> Result<(), String> {
+    match port {
+        0 => Err("port 0 cannot be forwarded".into()),
+        AGENT_PORT => Err(format!(
+            "port {AGENT_PORT} is reserved for the Telemaco agent"
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// A running `tailcat serve`. Dropping it kills tailcat.
@@ -116,6 +131,11 @@ impl TailcatServer {
         if !opts.allow.is_empty() {
             let keys: Vec<&str> = opts.allow.iter().map(|k| k.0.as_str()).collect();
             spec = spec.arg(format!("--allow={}", keys.join(",")));
+        }
+        // Positional ports and services are joined with commas by tailcat.
+        // Listed ports proxy to localhost; every other port reaches `exec`.
+        for port in &opts.forward_ports {
+            spec = spec.arg(port.to_string());
         }
         spec = spec
             .arg("exec")
@@ -202,7 +222,7 @@ impl TailcatServer {
 }
 
 /// Waits for tailcat to exit and describes how, with its recent stderr.
-async fn exit_report(
+pub(crate) async fn exit_report(
     child: &mut Child,
     spec: &ProcessSpec,
     tail: &Mutex<VecDeque<String>>,
@@ -257,7 +277,7 @@ async fn read_listen_addr<R: AsyncRead + Unpin>(
     }
 }
 
-async fn relay_stderr<R: AsyncRead + Unpin>(
+pub(crate) async fn relay_stderr<R: AsyncRead + Unpin>(
     r: R,
     tx: mpsc::Sender<String>,
     tail: Arc<Mutex<VecDeque<String>>>,
@@ -331,7 +351,27 @@ mod tests {
                 key: ServeKey::Ephemeral,
                 allow: vec![],
                 agent: ProcessSpec::new("/opt/telemaco").arg("remote").arg("agent"),
+                forward_ports: vec![],
             }
+        }
+
+        #[test]
+        fn forwarded_ports_go_before_the_exec_service() {
+            let cli = TailcatCli::locate(Some(&fake_bin("tailcat", "exit 0"))).unwrap();
+            let mut o = opts();
+            o.forward_ports = vec![5432, 8080];
+            let got = argv(&TailcatServer::spec(&cli, &o));
+            assert_eq!(
+                &got[..6],
+                ["serve", "--key=new", "--json", "5432", "8080", "exec"]
+            );
+        }
+
+        #[test]
+        fn forward_port_validation() {
+            assert!(validate_forward_port(5432).is_ok());
+            assert!(validate_forward_port(0).is_err());
+            assert!(validate_forward_port(AGENT_PORT).is_err());
         }
 
         fn argv(spec: &ProcessSpec) -> Vec<String> {

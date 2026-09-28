@@ -15,7 +15,8 @@ use telemaco_remote::protocol::{
     sanitize_for_display, EnvVar, ErrorCode, ExecEnd, ExecRequest, OutputStream, ProtocolError,
 };
 use telemaco_remote::transport::{
-    KeyName, NodeKey, ProcessSpec, ServeKey, ServeOptions, TailcatCli, TailcatServer,
+    validate_forward_port, ForwardRequest, KeyName, NodeKey, ProcessSpec, ServeKey, ServeOptions,
+    TailcatCli, TailcatServer,
 };
 use telemaco_remote::{
     select_transport, AnyTransport, Connection, RemoteClient, RemoteTarget, Transport,
@@ -65,6 +66,34 @@ pub enum RemoteCommand {
         /// --key unless --allow restricts who can connect.
         #[arg(long)]
         allow_exec: bool,
+
+        /// Expose this local port (on localhost only) to `remote forward`
+        /// clients. Repeatable. Nothing but the agent is reachable otherwise.
+        #[arg(long = "forward-port", value_name = "PORT")]
+        forward_ports: Vec<u16>,
+    },
+
+    /// Make a port of the remote machine available locally, until Ctrl-C.
+    ///
+    /// The remote side must have been started with `--forward-port PORT`.
+    /// Listens on 127.0.0.1 unless --bind says otherwise.
+    Forward {
+        /// A tailcat address (tc...).
+        target: String,
+
+        /// Port on the remote machine's localhost.
+        #[arg(value_parser = clap::value_parser!(u16).range(1..))]
+        remote_port: u16,
+
+        /// Local port to listen on; defaults to the remote port. `0` lets
+        /// the OS pick a free one.
+        #[arg(long, value_name = "PORT")]
+        local_port: Option<u16>,
+
+        /// Local address to listen on. Anything other than loopback makes
+        /// the forwarded port reachable by other machines on your network.
+        #[arg(long, value_name = "IP", default_value = "127.0.0.1")]
+        bind: std::net::IpAddr,
     },
 
     /// Run a program on the remote machine, streaming its output. Exits with
@@ -117,6 +146,10 @@ pub enum RemoteCommand {
         /// Honor exec requests. Set by `remote serve --allow-exec`.
         #[arg(long)]
         allow_exec: bool,
+
+        /// A port `remote serve` forwards, reported in status. Repeatable.
+        #[arg(long = "forwarded-port", value_name = "PORT")]
+        forwarded_ports: Vec<u16>,
     },
 }
 
@@ -127,7 +160,22 @@ pub async fn run(command: RemoteCommand) -> Result<i32> {
             key,
             allow,
             allow_exec,
-        } => serve(key, allow, allow_exec).await,
+            forward_ports,
+        } => serve(key, allow, allow_exec, forward_ports).await,
+        RemoteCommand::Forward {
+            target,
+            remote_port,
+            local_port,
+            bind,
+        } => {
+            forward(
+                &target,
+                remote_port,
+                local_port.unwrap_or(remote_port),
+                bind,
+            )
+            .await
+        }
         RemoteCommand::Status { target } => status(&target).await,
         RemoteCommand::Ping { target, count } => ping(&target, count).await,
         RemoteCommand::Exec {
@@ -137,7 +185,10 @@ pub async fn run(command: RemoteCommand) -> Result<i32> {
             timeout,
             command,
         } => exec(&target, cwd, env, timeout, command).await,
-        RemoteCommand::Agent { allow_exec } => run_agent(allow_exec).await,
+        RemoteCommand::Agent {
+            allow_exec,
+            forwarded_ports,
+        } => run_agent(allow_exec, forwarded_ports).await,
     }
     .map(|()| 0)
     .or_else(|e| match e.downcast::<ExecStatus>() {
@@ -161,14 +212,16 @@ impl std::error::Error for ExecStatus {}
 
 /// How the local transport and `tailcat serve` launch an agent: this very
 /// executable, by absolute path (tailcat resolves bare names via PATH).
-fn agent_spec(allow_exec: bool) -> Result<ProcessSpec> {
+fn agent_spec(allow_exec: bool, forwarded_ports: &[u16]) -> Result<ProcessSpec> {
     let exe = std::env::current_exe().context("cannot locate the telemaco executable")?;
-    let spec = ProcessSpec::new(exe).arg("remote").arg("agent");
-    Ok(if allow_exec {
-        spec.arg("--allow-exec")
-    } else {
-        spec
-    })
+    let mut spec = ProcessSpec::new(exe).arg("remote").arg("agent");
+    if allow_exec {
+        spec = spec.arg("--allow-exec");
+    }
+    for port in forwarded_ports {
+        spec = spec.arg("--forwarded-port").arg(port.to_string());
+    }
+    Ok(spec)
 }
 
 fn transport_for(target: &str) -> Result<AnyTransport> {
@@ -176,7 +229,7 @@ fn transport_for(target: &str) -> Result<AnyTransport> {
     let mut config = TransportConfig::from_env();
     // The local agent is this same user on this same machine with no network
     // in between, so exec crosses no trust boundary and is allowed.
-    config.local_agent = Some(agent_spec(true)?);
+    config.local_agent = Some(agent_spec(true, &[])?);
     Ok(select_transport(target, &config)?)
 }
 
@@ -240,6 +293,12 @@ async fn status(target: &str) -> Result<()> {
         sanitize_for_display(&info.telemaco_version)
     );
     println!("Protocol:  v{}", info.protocol_version);
+    if info.forwarded_ports.is_empty() {
+        println!("Ports:     none forwarded");
+    } else {
+        let ports: Vec<String> = info.forwarded_ports.iter().map(u16::to_string).collect();
+        println!("Ports:     {} (use `remote forward`)", ports.join(", "));
+    }
     println!(
         "Exec:      {}",
         if info.exec_enabled {
@@ -412,7 +471,75 @@ async fn run_exec(target: &str, request: ExecRequest) -> Result<i32> {
     })
 }
 
-async fn serve(key: Option<String>, allow: Vec<String>, allow_exec: bool) -> Result<()> {
+async fn forward(
+    target: &str,
+    remote_port: u16,
+    local_port: u16,
+    bind: std::net::IpAddr,
+) -> Result<()> {
+    let transport = transport_for(target)?;
+
+    // Ask the agent first: a port the server does not forward would only
+    // fail later, per connection, with a far less obvious error.
+    let mut conn = transport.connect().await?;
+    let outcome = tokio::time::timeout(SESSION_TIMEOUT, async {
+        let mut client = RemoteClient::handshake(&mut conn).await?;
+        client.status().await
+    })
+    .await;
+    let info = finish(conn, outcome).await?;
+    if !info.forwarded_ports.contains(&remote_port) {
+        bail!(
+            "the remote does not forward port {remote_port}; restart it with \
+             `telemaco remote serve --forward-port {remote_port}`"
+        );
+    }
+
+    let request = ForwardRequest {
+        remote_port,
+        local_port,
+        bind,
+    };
+    let (mut forwarder, mut lines) = transport.forward(request).await?;
+    let local = forwarder.local_addr();
+    if !bind.is_loopback() {
+        eprintln!(
+            "Warning: listening on {bind}, so other machines that can reach this one can use \
+             the forwarded port."
+        );
+    }
+    eprintln!(
+        "Forwarding {local} -> remote localhost:{remote_port} over {}.",
+        transport.kind()
+    );
+    // The local address alone on stdout, so scripts can capture it.
+    println!("{local}");
+    eprintln!("Press Ctrl-C to stop.");
+
+    let shutdown = shutdown_signal();
+    tokio::pin!(shutdown);
+    let outcome = loop {
+        tokio::select! {
+            () = &mut shutdown => break Ok(()),
+            err = forwarder.wait() => break Err(anyhow!(err).context("forwarding stopped")),
+            Some(line) = lines.recv() => eprintln!("{line}"),
+        }
+    };
+    forwarder.shutdown().await?;
+    outcome
+}
+
+async fn serve(
+    key: Option<String>,
+    allow: Vec<String>,
+    allow_exec: bool,
+    mut forward_ports: Vec<u16>,
+) -> Result<()> {
+    for port in &forward_ports {
+        validate_forward_port(*port).map_err(|e| anyhow!("--forward-port: {e}"))?;
+    }
+    forward_ports.sort_unstable();
+    forward_ports.dedup();
     let key = match key {
         None => ServeKey::Ephemeral,
         Some(name) => ServeKey::Saved(KeyName::parse(&name).map_err(|e| anyhow!("--key: {e}"))?),
@@ -435,7 +562,8 @@ async fn serve(key: Option<String>, allow: Vec<String>, allow_exec: bool) -> Res
     let opts = ServeOptions {
         key,
         allow,
-        agent: agent_spec(allow_exec)?,
+        agent: agent_spec(allow_exec, &forward_ports)?,
+        forward_ports: forward_ports.clone(),
     };
 
     eprintln!("Starting Tailcat...");
@@ -458,6 +586,15 @@ async fn serve(key: Option<String>, allow: Vec<String>, allow_exec: bool) -> Res
         );
     } else {
         eprintln!("  exec:  disabled (enable with --allow-exec)");
+    }
+    if forward_ports.is_empty() {
+        eprintln!("  ports: none forwarded (add with --forward-port)");
+    } else {
+        let ports: Vec<String> = forward_ports.iter().map(u16::to_string).collect();
+        eprintln!(
+            "  ports: {} on localhost, for `remote forward`",
+            ports.join(", ")
+        );
     }
     if opts.allow.is_empty() {
         eprintln!("  allow: anyone who has the address");
@@ -516,12 +653,13 @@ async fn shutdown_signal() {
 
 /// One protocol session on stdio. Stdout belongs to the protocol, so every
 /// diagnostic goes to stderr, which `remote serve` shows the operator.
-async fn run_agent(allow_exec: bool) -> Result<()> {
+async fn run_agent(allow_exec: bool, forwarded_ports: Vec<u16>) -> Result<()> {
     let peer = agent::peer_label(std::env::var("TAILCAT_PEER_KEY").ok().as_deref());
     let config = AgentConfig {
         telemaco_version: env!("TELEMACO_BUILD_VERSION").to_string(),
         allow_exec,
         audit_peer: Some(peer.clone()),
+        forwarded_ports,
     };
     eprintln!("telemaco agent: session from {peer}");
     let mut stdio = tokio::io::join(tokio::io::stdin(), tokio::io::stdout());

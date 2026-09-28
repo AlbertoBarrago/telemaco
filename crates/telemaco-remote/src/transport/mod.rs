@@ -8,18 +8,24 @@
 mod local;
 mod process;
 pub mod tailcat;
+pub mod tailcat_forward;
 pub mod tailcat_server;
 
 use std::fmt;
 use std::future::Future;
 use std::path::PathBuf;
 
+use tokio::sync::mpsc;
+
 use crate::address::{AddressError, TailcatAddress};
 
 pub use local::LocalTransport;
 pub use process::{Arg, CapturedOutput, Connection, ProcessSpec};
 pub use tailcat::{TailcatCli, TailcatTransport, TailcatVersion};
-pub use tailcat_server::{KeyName, NodeKey, ServeKey, ServeOptions, TailcatServer};
+pub use tailcat_forward::{ForwardRequest, Forwarder};
+pub use tailcat_server::{
+    validate_forward_port, KeyName, NodeKey, ServeKey, ServeOptions, TailcatServer,
+};
 
 /// A way to open a byte stream to a remote agent.
 pub trait Transport {
@@ -34,6 +40,19 @@ pub trait Transport {
     /// apply, as for the local transport.
     fn path(&self) -> impl Future<Output = Result<Option<PathInfo>, TransportError>> + Send {
         async { Ok(None) }
+    }
+
+    /// Forwards a local listener to a port on the remote machine's
+    /// localhost, returning the running forwarder and its log lines.
+    /// Transports without a network (local) refuse.
+    fn forward(
+        &self,
+        request: ForwardRequest,
+    ) -> impl Future<Output = Result<(Forwarder, mpsc::Receiver<String>), TransportError>> + Send
+    {
+        let kind = self.kind();
+        let _ = request;
+        async move { Err(TransportError::ForwardUnsupported(kind)) }
     }
 }
 
@@ -83,6 +102,8 @@ pub enum TransportError {
     UnsupportedTailcatVersion { found: String, required: String },
     #[error("the local transport is not configured in this build")]
     LocalUnavailable,
+    #[error("port forwarding is not available over the {0} transport")]
+    ForwardUnsupported(TransportKind),
     #[error("failed to start {program}: {source}")]
     Spawn {
         program: String,
@@ -184,6 +205,16 @@ impl Transport for AnyTransport {
         match self {
             AnyTransport::Tailcat(t) => t.path().await,
             AnyTransport::Local(t) => t.path().await,
+        }
+    }
+
+    async fn forward(
+        &self,
+        request: ForwardRequest,
+    ) -> Result<(Forwarder, mpsc::Receiver<String>), TransportError> {
+        match self {
+            AnyTransport::Tailcat(t) => t.forward(request).await,
+            AnyTransport::Local(t) => t.forward(request).await,
         }
     }
 }

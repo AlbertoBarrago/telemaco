@@ -35,6 +35,10 @@ pub struct AgentConfig {
     /// arguments, which may carry secrets) goes to stderr, tagged with this
     /// peer label. Stderr is the operator's log under `tailcat serve`.
     pub audit_peer: Option<String>,
+    /// Ports `remote serve` told tailcat to forward, reported in status so a
+    /// client can check before forwarding. Informational: tailcat enforces
+    /// what is actually reachable.
+    pub forwarded_ports: Vec<u16>,
 }
 
 /// One frame (or the end of the stream) as read by the session's reader.
@@ -341,6 +345,7 @@ async fn status(config: &AgentConfig) -> StatusInfo {
         telemaco_version: config.telemaco_version.clone(),
         protocol_version: PROTOCOL_VERSION,
         exec_enabled: config.allow_exec,
+        forwarded_ports: config.forwarded_ports.clone(),
     }
 }
 
@@ -389,6 +394,7 @@ mod tests {
             telemaco_version: "9.9.9".into(),
             allow_exec: false,
             audit_peer: None,
+            forwarded_ports: vec![],
         }
     }
 
@@ -534,6 +540,7 @@ mod tests {
                 telemaco_version: "t".into(),
                 allow_exec,
                 audit_peer: None,
+                forwarded_ports: vec![],
             };
             (
                 client,

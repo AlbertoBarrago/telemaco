@@ -373,3 +373,133 @@ fn serve_refuses_exec_on_a_saved_key_without_an_allow_list() {
     assert!(!out.status.success());
     assert!(stderr.contains("needs --allow"), "{stderr}");
 }
+
+/// A fake tailcat whose client mode runs an agent that reports port 5432 as
+/// forwarded, and whose `forward` mode records its argv and announces a
+/// listener like the real one.
+fn forward_bin(tag: &str) -> (PathBuf, PathBuf) {
+    let dir = scratch_dir(tag);
+    let argvfile = dir.join("forward.argv");
+    let agent = env!("CARGO_BIN_EXE_telemaco");
+    let path = dir.join("tailcat");
+    let script = format!(
+        "#!/bin/sh\n\
+         case \"$1\" in\n\
+           version) echo v0.7.0 ;;\n\
+           forward) printf '%s\\n' \"$@\" > '{argv}'\n\
+                    echo \"# forwarding 127.0.0.1:54321 -> remote localhost:5432\" >&2\n\
+                    exec sleep 60 ;;\n\
+           *) exec '{agent}' remote agent --forwarded-port 5432 ;;\n\
+         esac\n",
+        argv = argvfile.display(),
+    );
+    std::fs::write(&path, script).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (path, argvfile)
+}
+
+#[test]
+fn forward_checks_the_port_then_delegates_to_tailcat_on_loopback() {
+    let (bin, argvfile) = forward_bin("forward");
+    let mut child = telemaco()
+        .env("TELEMACO_TAILCAT_BIN", &bin)
+        .args(["remote", "forward", ADDR, "5432", "--local-port", "0"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    while std::io::Read::read(&mut stdout, &mut byte).unwrap() == 1 && byte[0] != b'\n' {
+        line.push(byte[0]);
+    }
+    assert_eq!(String::from_utf8(line).unwrap(), "127.0.0.1:54321");
+
+    let argv = std::fs::read_to_string(&argvfile).unwrap();
+    let argv: Vec<&str> = argv.lines().collect();
+    assert_eq!(argv, ["forward", "--bind=127.0.0.1", ADDR, "0:5432"]);
+
+    Command::new("kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        !stderr.contains("Warning"),
+        "loopback must not warn: {stderr}"
+    );
+    assert!(!stderr.contains(ADDR), "{stderr}");
+}
+
+#[test]
+fn forward_refuses_a_port_the_server_does_not_expose() {
+    let (bin, argvfile) = forward_bin("forward-refused");
+    let out = telemaco()
+        .env("TELEMACO_TAILCAT_BIN", &bin)
+        .args(["remote", "forward", ADDR, "22"])
+        .output()
+        .unwrap();
+    let (_, stderr) = text(&out);
+    assert!(!out.status.success());
+    assert!(stderr.contains("does not forward port 22"), "{stderr}");
+    assert!(stderr.contains("--forward-port 22"), "{stderr}");
+    assert!(
+        !argvfile.exists(),
+        "tailcat forward must not have been started"
+    );
+}
+
+#[test]
+fn forward_is_unavailable_over_the_local_transport() {
+    let out = telemaco()
+        .args(["remote", "forward", "local", "5432"])
+        .output()
+        .unwrap();
+    let (_, stderr) = text(&out);
+    assert!(!out.status.success());
+    assert!(stderr.contains("does not forward port 5432"), "{stderr}");
+}
+
+#[test]
+fn serve_forward_ports_reach_tailcat_and_the_agent() {
+    let (argv, stderr) = run_serve(
+        "serve-ports",
+        &["--forward-port", "8080", "--forward-port", "5432"],
+    );
+    assert_eq!(
+        &argv[..6],
+        ["serve", "--key=new", "--json", "5432", "8080", "exec"]
+    );
+    assert_eq!(
+        &argv[8..],
+        [
+            "remote",
+            "agent",
+            "--forwarded-port",
+            "5432",
+            "--forwarded-port",
+            "8080"
+        ]
+    );
+    assert!(
+        stderr.contains("ports: 5432, 8080 on localhost"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn serve_rejects_the_reserved_agent_port() {
+    let dir = scratch_dir("reserved");
+    let bin = fake_tailcat(&dir, "exit 0");
+    let out = telemaco()
+        .env("TELEMACO_TAILCAT_BIN", &bin)
+        .args(["remote", "serve", "--forward-port", "7431"])
+        .output()
+        .unwrap();
+    let (_, stderr) = text(&out);
+    assert!(!out.status.success());
+    assert!(stderr.contains("reserved"), "{stderr}");
+}

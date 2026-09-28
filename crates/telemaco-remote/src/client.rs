@@ -202,6 +202,7 @@ mod tests {
             telemaco_version: "1.2.3".into(),
             allow_exec: true,
             audit_peer: None,
+            forwarded_ports: vec![],
         };
         let agent = tokio::spawn(async move { agent::serve(&mut s, &cfg).await });
         let mut client = RemoteClient::handshake(&mut c).await.unwrap();
