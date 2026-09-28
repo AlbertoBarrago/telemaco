@@ -1,6 +1,7 @@
 mod update;
 mod focus;
 mod installer;
+mod remote;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -328,6 +329,13 @@ enum Command {
         /// Cursor's `sessionStart`, which reads `additional_context`.
         #[arg(long, default_value = "text")]
         format: String,
+    },
+
+    /// Manage another machine over a remote transport (Tailcat): status,
+    /// connectivity, and a Telemaco agent to serve.
+    Remote {
+        #[command(subcommand)]
+        command: remote::RemoteCommand,
     },
 }
 
@@ -731,6 +739,15 @@ async fn main() -> anyhow::Result<()> {
                     )
                 })?;
             installer::prompt_hook::run_prompt_hook(format)?;
+        }
+        Some(Command::Remote { command }) => {
+            // Returns before update::maybe_notify: the agent's stdout is the
+            // protocol channel, and none of these should contact GitHub.
+            let status = remote::run(command).await?;
+            if status != 0 {
+                std::process::exit(status);
+            }
+            return Ok(());
         }
         None => {
             print_banner(args.port);
@@ -3028,5 +3045,92 @@ mod tests {
         assert_eq!(lines.len(), 1, "got {lines:?}");
         assert!(lines[0].contains("\"https://example.test/ok.html\""));
         assert!(lines[0].contains("\"iframe\""));
+    }
+
+    #[test]
+    fn remote_subcommands_parse() {
+        use crate::remote::RemoteCommand;
+        let parse = |argv: &[&str]| match Args::try_parse_from(argv).map(|a| a.command) {
+            Ok(Some(Command::Remote { command })) => Ok(command),
+            Ok(_) => panic!("expected remote command for {argv:?}"),
+            Err(e) => Err(e),
+        };
+        assert!(matches!(
+            parse(&["telemaco", "remote", "serve"]).unwrap(),
+            RemoteCommand::Serve { key: None, ref allow, allow_exec: false, ref forward_ports } if allow.is_empty() && forward_ports.is_empty()
+        ));
+        let RemoteCommand::Serve { key, allow, .. } = parse(&[
+            "telemaco", "remote", "serve", "--key", "home", "--allow", "nodekey:aa", "--allow",
+            "nodekey:bb",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(key.as_deref(), Some("home"));
+        assert_eq!(allow, ["nodekey:aa", "nodekey:bb"]);
+        assert!(matches!(
+            parse(&["telemaco", "remote", "status", "local"]).unwrap(),
+            RemoteCommand::Status { ref target } if target == "local"
+        ));
+        assert!(matches!(
+            parse(&["telemaco", "remote", "ping", "local", "-c", "2"]).unwrap(),
+            RemoteCommand::Ping { count: 2, .. }
+        ));
+        // `-v` stays the global verbose flag inside remote subcommands.
+        assert!(Args::try_parse_from(["telemaco", "remote", "-v", "status", "local"]).unwrap().verbose);
+        assert!(parse(&["telemaco", "remote", "status"]).is_err());
+        assert!(parse(&["telemaco", "remote", "ping", "local", "-c", "0"]).is_err());
+        assert!(parse(&["telemaco", "remote", "shell", "local"]).is_err());
+        assert!(matches!(
+            parse(&["telemaco", "remote", "agent"]).unwrap(),
+            RemoteCommand::Agent { allow_exec: false, .. }
+        ));
+        assert!(matches!(
+            parse(&["telemaco", "remote", "serve", "--allow-exec"]).unwrap(),
+            RemoteCommand::Serve { allow_exec: true, .. }
+        ));
+        let RemoteCommand::Serve { forward_ports, .. } = parse(&[
+            "telemaco", "remote", "serve", "--forward-port", "5432", "--forward-port", "8080",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(forward_ports, [5432, 8080]);
+        let RemoteCommand::Forward { remote_port, local_port, bind, .. } =
+            parse(&["telemaco", "remote", "forward", "tcX", "5432"]).unwrap()
+        else {
+            panic!()
+        };
+        assert_eq!((remote_port, local_port), (5432, None));
+        assert!(bind.is_loopback(), "forward must default to loopback");
+        let RemoteCommand::Forward { local_port, bind, .. } = parse(&[
+            "telemaco", "remote", "forward", "tcX", "5432", "--local-port", "0", "--bind",
+            "0.0.0.0",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(local_port, Some(0));
+        assert!(bind.is_unspecified());
+        assert!(parse(&["telemaco", "remote", "forward", "tcX", "0"]).is_err());
+        assert!(parse(&["telemaco", "remote", "forward", "tcX", "5432", "--bind", "x"]).is_err());
+        // The remote argv is preserved exactly, flags included.
+        let RemoteCommand::Exec { target, cwd, env, timeout, command } = parse(&[
+            "telemaco", "remote", "exec", "local", "--cwd", "/tmp", "--env", "A=1", "--timeout",
+            "5", "--", "ls", "-la", "--color", "a b", "",
+        ])
+        .unwrap() else {
+            panic!()
+        };
+        assert_eq!(target, "local");
+        assert_eq!(cwd.as_deref(), Some("/tmp"));
+        assert_eq!(env, ["A=1"]);
+        assert_eq!(timeout, Some(5));
+        assert_eq!(command, ["ls", "-la", "--color", "a b", ""]);
+        // `--` is required: without it the remote command could be taken for
+        // telemaco's own flags.
+        assert!(parse(&["telemaco", "remote", "exec", "local", "ls"]).is_err());
+        assert!(parse(&["telemaco", "remote", "exec", "local", "--"]).is_err());
+        assert!(parse(&["telemaco", "remote", "exec", "local", "--timeout", "0", "--", "ls"]).is_err());
     }
 }

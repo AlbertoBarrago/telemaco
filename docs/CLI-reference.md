@@ -130,3 +130,51 @@ Default transport is stdio. See [Use the MCP server](Use-the-MCP-server.md).
 
 Render-enabled builds add `browser_screenshot` and `browser_pdf` to the MCP
 tool list. Streaming screencasts are available through CDP rather than MCP.
+
+## `telemaco remote`
+
+Manage another machine over Tailcat. Needs the `tailcat` binary (v0.7.0+) on `PATH` or in `TELEMACO_TAILCAT_BIN`; every other command works without it. A `<TARGET>` is a tailcat address (`tc...`) or `local`. See [Remote over Tailcat](Remote-over-Tailcat.md).
+
+### `telemaco remote serve`
+
+Serve the Telemaco agent and print its address (the only line on stdout).
+
+```
+    --allow-exec             Let clients run programs as this user (off by default)
+    --forward-port <PORT>    Expose this localhost port to `remote forward` (repeatable)
+    --allow <NODEKEY>        Only accept these client keys (repeatable)
+    --key <NAME>             Use a saved tailcat key instead of an ephemeral one
+```
+
+`--allow-exec` with `--key` requires `--allow`. Port 7431 is reserved for the agent.
+
+### `telemaco remote status <TARGET>`
+
+Host, OS, Telemaco and protocol versions, forwarded ports, exec availability, and whether the path is direct or relayed.
+
+### `telemaco remote ping <TARGET>`
+
+```
+-c, --count <N>              Number of pings, 1 to 100 (default 4)
+```
+
+### `telemaco remote exec <TARGET> [OPTIONS] -- <PROGRAM> [ARGS]...`
+
+Run a program without a shell, streaming its output.
+
+```
+    --cwd <DIR>              Absolute working directory on the remote
+    --env <NAME=VALUE>       Environment variable (repeatable)
+    --timeout <SECS>         Kill the program after this long
+```
+
+Exits with the program's status; 128+N if killed by signal N, 127 if it could not start, 124 on `--timeout`, 130 if cancelled, 255 if the transport failed or exec is disabled.
+
+### `telemaco remote forward <TARGET> <REMOTE_PORT>`
+
+Listen locally and forward to a port the server exposes with `--forward-port`, until Ctrl-C. Prints the local address on stdout.
+
+```
+    --local-port <PORT>      Local port (default: same as remote; 0 = any free port)
+    --bind <IP>              Listen address (default 127.0.0.1)
+```

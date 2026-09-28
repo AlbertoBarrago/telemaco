@@ -30,6 +30,7 @@ telemaco-cdp = { workspace = true }
 telemaco-dom = { workspace = true }
 telemaco-net = { workspace = true }
 telemaco-js = { workspace = true }
+telemaco-remote = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }

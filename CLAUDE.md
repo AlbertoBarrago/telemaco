@@ -54,13 +54,13 @@ style in the files you edit.
 
 ## Architecture
 
-Workspace of nine crates, one layer per crate; cross-crate calls go through the
+Workspace of ten crates, one layer per crate; cross-crate calls go through the
 layer above, not sideways. All async is `tokio` with a `LocalSet` because V8 is
 `!Send`. All DOM ops go through `op_dom` to keep the JS/Rust boundary narrow.
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `serve` (CDP server), `scrape`, `mcp` |
+| `telemaco-cli` | CLI: `fetch`, `serve` (CDP server), `scrape`, `mcp`, `remote` |
 | `telemaco-cdp` | Chrome DevTools Protocol server (WebSocket) |
 | `telemaco-js` | V8/`deno_core` runtime; `js/bootstrap.js` DOM shim + `src/ops.rs` bridge |
 | `telemaco-dom` | DOM tree (`src/tree.rs`) |
@@ -68,6 +68,7 @@ layer above, not sideways. All async is `tokio` with a `LocalSet` because V8 is
 | `telemaco-browser` | The `Page` type, navigation, JS evaluation |
 | `telemaco-render` | Selector cascade, retained layout, paint, screenshots, PDF |
 | `telemaco-mcp` | Stateful MCP automation tools |
+| `telemaco-remote` | Remote protocol (status, exec, forward) and transports; drives the external `tailcat` CLI |
 | `telemaco` | Embeddable Rust library API |
 
 Key invariants (see `AGENTS.md` for detail):

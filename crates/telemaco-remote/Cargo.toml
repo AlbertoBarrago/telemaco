@@ -1,0 +1,21 @@
+[package]
+name = "telemaco-remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Remote protocol and pluggable transports (Tailcat, local) for Telemaco."
+keywords = ["remote", "tailcat", "transport", "cli"]
+categories = ["command-line-utilities", "network-programming"]
+homepage.workspace = true
+rust-version.workspace = true
+
+# Deliberately free of V8 and the browser crates: the remote layer only moves
+# bytes between processes, so it builds and tests in seconds.
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

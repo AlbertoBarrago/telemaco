@@ -1,7 +1,7 @@
-Telemaco is a workspace of nine crates.
+Telemaco is a workspace of ten crates.
 
 ```
-telemaco-cli       CLI entry point. fetch, serve, scrape, mcp.
+telemaco-cli       CLI entry point. fetch, serve, scrape, mcp, remote.
 telemaco-cdp       Chrome DevTools Protocol server. WebSocket, dispatch, domain handlers.
 telemaco-browser   Page type, navigation, lifecycle events.
 telemaco-js        V8 runtime via deno_core. bootstrap.js + Rust ops.
@@ -9,6 +9,7 @@ telemaco-dom       DOM tree implementation.
 telemaco-net       HTTP client, stealth client, cookie jar, robots cache, tracker blocklist.
 telemaco-mcp       Model Context Protocol server.
 telemaco-render    CSS cascade, retained layout, text shaping, and CPU paint.
+telemaco-remote    Remote protocol and transports (Tailcat, local). No V8.
 telemaco           Embeddable Rust library API (Browser, Page, Element, CookieStore).
 ```
 

@@ -246,6 +246,12 @@ Tests: `cargo test -p telemaco-cli --no-default-features --bin telemaco installe
   `render` feature powers geometry, screenshots, CDP screencasting, and PDF.
 - **telemaco-mcp** — stateful MCP automation tools. Render builds expose
   `browser_screenshot` and `browser_pdf`; streaming screencasts remain CDP-only.
+- **telemaco-remote**: remote protocol v1 (length-prefixed JSON, 1 MiB frame
+  cap, closed enums with `deny_unknown_fields`), agent, client, and
+  transports. Tailcat is driven as an external `tailcat` process, never
+  through a shell; `TailcatAddress` is a capability and stays redacted outside
+  `expose()`. No V8 dependency, so `cargo nextest run -p telemaco-remote` takes
+  seconds. The agent's stdout is the protocol channel: never print to it.
 - **telemaco** — embeddable Rust library API (git dependency; builds V8 locally, not on crates.io). Public request-interception API on `Page`: `add_preload_script`, `enable_interception` (channel of `InterceptedRequest`, resolved with `InterceptResolution::{Continue, Fulfill, Fail}`), and passive `on_request` / `on_response`. `op_fetch_url` invokes these for JS `fetch()`/XHR, so when touching it keep a `Continue` URL rewrite behind `validate_fetch_url` (the SSRF gate, same as redirects).
 ## Conventions
 
