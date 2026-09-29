@@ -5,6 +5,17 @@ All notable changes to Telemaco are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-09-29
+
+### Fixed
+
+- **`cargo clippy` failed to compile on `telemaco-js` and every crate that
+  depends on it.** The import map prefix match was a loop that returned on its
+  first iteration, which clippy's deny-by-default `never_loop` lint rejects.
+  It now uses `find`; behavior is unchanged (the most specific prefix still
+  wins), and a new test pins that rule, including after a merge
+  ([#7](https://github.com/AlbertoBarrago/telemaco/issues/7)).
+
 ## [0.2.2] - 2026-09-28
 
 ### Added
@@ -62,5 +73,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the lifecycle hook, but not the Apex content loading, which remains
   unresolved. The rest of the engine works normally.
 
+[0.2.3]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.3
 [0.2.2]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.2
 [0.2.1]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.1
