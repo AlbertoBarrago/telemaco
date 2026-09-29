@@ -232,10 +232,12 @@ impl SpecifierMap {
             return Ok(None);
         }
 
-        for key in self
+        // `prefixes` is kept in descending order, so the first match is the
+        // most specific prefix, which is the one the spec says wins.
+        if let Some(key) = self
             .prefixes
             .iter()
-            .filter(|key| normalized.starts_with(key.as_str()))
+            .find(|key| normalized.starts_with(key.as_str()))
         {
             let address = self
                 .entries
@@ -331,6 +333,49 @@ mod tests {
                 .unwrap()
                 .as_str(),
             "https://example.test/app/vendor/local.js",
+        );
+    }
+
+    #[test]
+    fn most_specific_prefix_wins_including_after_a_merge() {
+        // `resolve_match` takes the first matching prefix, which is only the
+        // most specific one because `prefixes` is kept in descending order.
+        let mut map = ImportMap::parse(
+            r#"{
+                "imports": {
+                    "pkg/": "/generic/",
+                    "pkg/sub/": "/specific/"
+                }
+            }"#,
+            "https://example.test/app/index.html",
+        )
+        .unwrap();
+        let referrer =
+            deno_core::ModuleSpecifier::parse("https://example.test/app/main.js").unwrap();
+
+        assert_eq!(
+            map.resolve("pkg/sub/a.js", &referrer).unwrap().as_str(),
+            "https://example.test/specific/a.js",
+        );
+        assert_eq!(
+            map.resolve("pkg/b.js", &referrer).unwrap().as_str(),
+            "https://example.test/generic/b.js",
+        );
+
+        // A more specific prefix added by a later map must also win for
+        // specifiers that were not resolved before the merge.
+        map.merge(
+            ImportMap::parse(
+                r#"{"imports":{"pkg/sub/deep/":"/deeper/"}}"#,
+                "https://example.test/app/index.html",
+            )
+            .unwrap(),
+        );
+        assert_eq!(
+            map.resolve("pkg/sub/deep/c.js", &referrer)
+                .unwrap()
+                .as_str(),
+            "https://example.test/deeper/c.js",
         );
     }
 
