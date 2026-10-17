@@ -65,6 +65,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Slower than the timeouts the timeout stage uses.
             time.sleep(8)
             return self._plain("late")
+        if path == "/endless":
+            return self._endless()
         if path == "/gone":
             self.send_error(404, "Not Found")
             return
@@ -75,6 +77,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Location", target)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def _endless(self) -> None:
+        # A body that never ends, without Content-Length: only a body cap or a
+        # deadline on the client side can stop it. The client hanging up is
+        # the expected way out, so a broken pipe is not an error here.
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        chunk = b"<p>ENDLESS</p>" * 4096
+        try:
+            while True:
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _plain(self, body: str) -> None:
         raw = body.encode()
@@ -311,6 +327,43 @@ def state_eval_iife(u):
     return "TITLE:Acceptance root" in r
 
 
+def hostile_node_bomb(u):
+    # A script that grows the DOM forever must hit the node budget as a
+    # catchable RangeError. Without the budget the loop runs until the script
+    # watchdog kills it, the catch never runs, and the page reports NO-ERROR.
+    env = {**BASE_ENV, "TELEMACO_MAX_DOM_NODES": "200000"}
+    start = time.monotonic()
+    r = cli("fetch", f"{u}/node-bomb.html", "-q", "--eval", "window.__bomb", env=env)
+    return "BOMB:RangeError" in r and r.rc == 0 and time.monotonic() - start < 10
+
+
+def hostile_infinite_loop(u):
+    # `while (true) {}` never yields, so only the V8 watchdog can stop it. A
+    # short script deadline must terminate the loop and still return the page,
+    # well before the process-level hard deadline (timeout + wait + 10s).
+    env = {**BASE_ENV, "TELEMACO_SCRIPT_DEADLINE_MS": "2000"}
+    start = time.monotonic()
+    r = cli("fetch", f"{u}/infinite-loop.html", "--timeout", "3", "--dump", "text",
+            env=env, timeout=30)
+    return "LOOP-BODY" in r and r.rc == 0 and time.monotonic() - start < 8
+
+
+def hostile_timer_storm(u):
+    # A self-rescheduling zero-delay timer keeps the event loop busy forever;
+    # the page must still settle and be captured within the deadline.
+    start = time.monotonic()
+    r = cli("fetch", f"{u}/timer-storm.html", "--timeout", "3", "--dump", "text", timeout=30)
+    return "STORM-BODY" in r and r.rc == 0 and time.monotonic() - start < 8
+
+
+def hostile_endless_body(u):
+    # A response that never ends must be cut off by the body cap or the
+    # deadline and reported as a failure, not buffered until memory runs out.
+    start = time.monotonic()
+    r = cli("fetch", f"{u}/endless", "--timeout", "5", "--dump", "text", timeout=30)
+    return r.rc > 0 and time.monotonic() - start < 10
+
+
 def security_ssrf_gate(u):
     # The only stage that must run WITHOUT the gate opened.
     env = {k: v for k, v in os.environ.items() if k != "TELEMACO_ALLOW_PRIVATE_NETWORK"}
@@ -540,6 +593,10 @@ STAGES: list[tuple[str, object]] = [
     ("state.storage-dir", state_storage_dir),
     ("state.local-storage", state_local_storage),
     ("state.eval-iife", state_eval_iife),
+    ("hostile.node-bomb", hostile_node_bomb),
+    ("hostile.infinite-loop", hostile_infinite_loop),
+    ("hostile.timer-storm", hostile_timer_storm),
+    ("hostile.endless-body", hostile_endless_body),
     ("security.ssrf-gate", security_ssrf_gate),
     ("security.robots", security_robots),
     ("security.private-network-flag", security_private_flag),

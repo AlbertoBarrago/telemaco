@@ -42,6 +42,14 @@ Soft deadline for the complete page script-execution phase, including classic sc
 TELEMACO_SCRIPT_DEADLINE_MS=60000 telemaco serve
 ```
 
+### `TELEMACO_MAX_DOM_NODES`
+
+Maximum live nodes per document. Default 500000 (about 500 MB of resident memory at the cap). Once a document reaches it, DOM calls that create nodes (`createElement`, `cloneNode`, `innerHTML`, `document.write`, and similar) throw a `RangeError`, so a script that grows the DOM without bound fails fast instead of consuming native memory. Real pages stay far below the default; lower it to bound per-worker memory under high concurrency:
+
+```bash
+TELEMACO_MAX_DOM_NODES=300000 telemaco scrape url1 url2 --concurrency 25
+```
+
 ### `TELEMACO_MODULE_BUDGET_MS`
 
 Per-module graph-loading and evaluation budget for modules that enhance an already-rendered page. Default 3000 (3 seconds). Raise it when a module such as the Vite HMR client legitimately needs longer to evaluate:

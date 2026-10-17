@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><title>Timer storm</title></head>
+<body>
+<p>STORM-BODY</p>
+<script>
+// A zero-delay timer that reschedules itself forever: the event loop never
+// drains, so only the engine's deadline can end the page.
+(function tick() { setTimeout(tick, 0); })();
+</script>
+</body></html>

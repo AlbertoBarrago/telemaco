@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><title>Node bomb</title></head>
+<body>
+<p>BOMB-BODY</p>
+<script>
+// Grows the DOM without bound. The engine must stop it with a catchable
+// error instead of growing native memory until the watchdog fires.
+window.__bomb = "NO-ERROR";
+try {
+  const sink = document.createElement("div");
+  for (;;) sink.appendChild(document.createElement("span"));
+} catch (e) {
+  window.__bomb = "BOMB:" + e.name;
+}
+</script>
+</body></html>

@@ -21,7 +21,7 @@ MAX_RESULT_BYTES = 10 * 1024 * 1024
 # A floor, not an exact count: this script is read from the base revision, so
 # an exact count would fail every PR that adds stages. Raise it when stages
 # land; a PR still cannot drop below it.
-MIN_STAGE_COUNT = 41
+MIN_STAGE_COUNT = 45
 
 
 def load_result(path: Path) -> dict:

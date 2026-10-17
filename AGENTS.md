@@ -49,7 +49,7 @@ single V8 isolate per process, so the runtime tests fail under it. `nextest`
 runs each test in its own process, which is the only supported way.
 
 The authoritative behavioral gate is the **acceptance suite** in
-`acceptance/`, 41 stages that must stay at 41/41:
+`acceptance/`, 45 stages that must stay at 45/45:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -74,7 +74,7 @@ For any code change:
 1. Run focused release-mode nextest coverage for the crates and repro involved.
 2. Run `cargo nextest run --release --features render --no-fail-fast`.
 3. Run the exact release build shown above.
-4. The acceptance suite still reports **41/41**.
+4. The acceptance suite still reports **45/45**.
 5. For render changes, run deterministic fixtures and broad top/bottom real-site
    captures using the methodology below.
 6. For stealth changes, re-test with `--stealth` (a non-stealth binary won't
@@ -335,6 +335,11 @@ One page must never hang or crash a worker:
   `tokio::time::timeout` only cancels at await points and synchronous V8 work
   runs unbounded.
 - The CLI applies a process-level hard deadline as an absolute backstop.
+- Node-creating DOM ops throw a `RangeError` once a document holds
+  `TELEMACO_MAX_DOM_NODES` live nodes (`check_dom_node_budget` in `ops.rs`).
+  The tree lives in Rust, outside the V8 heap limit, so without the budget a
+  `createElement` loop grows native memory by gigabytes before the watchdog
+  fires.
 - `panic = "unwind"` is pinned in the release profile so `catch_unwind` works.
 
 ## Stealth
