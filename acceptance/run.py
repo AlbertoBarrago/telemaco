@@ -338,13 +338,11 @@ def hostile_node_bomb(u):
 
 
 def hostile_infinite_loop(u):
-    # `while (true) {}` never yields, so only the V8 watchdog can stop it. A
-    # short script deadline must terminate the loop and still return the page,
-    # well before the process-level hard deadline (timeout + wait + 10s).
-    env = {**BASE_ENV, "TELEMACO_SCRIPT_DEADLINE_MS": "2000"}
+    # `while (true) {}` never yields, so only the V8 watchdog can stop it. The
+    # watchdog must honor --timeout, terminate the loop and still return the
+    # page, well before the process-level hard deadline (timeout + wait + 10s).
     start = time.monotonic()
-    r = cli("fetch", f"{u}/infinite-loop.html", "--timeout", "3", "--dump", "text",
-            env=env, timeout=30)
+    r = cli("fetch", f"{u}/infinite-loop.html", "--timeout", "3", "--dump", "text", timeout=30)
     return "LOOP-BODY" in r and r.rc == 0 and time.monotonic() - start < 8
 
 
