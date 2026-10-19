@@ -1557,6 +1557,15 @@ impl DomTree {
         self.inner.borrow().nodes.iter().filter(|n| n.is_some()).count()
     }
 
+    /// Number of live nodes in O(1). Every `None` slot is on the free list
+    /// (slots are only vacated by the freeing path, which pushes them), so
+    /// the difference is exact. Used as the per-document node budget check on
+    /// the hot DOM op path, where `len()` would be a full arena scan.
+    pub fn live_node_count(&self) -> usize {
+        let inner = self.inner.borrow();
+        inner.nodes.len().saturating_sub(inner.free_list.len())
+    }
+
     // Number of node slots (live plus freed), i.e. the same upper bound
     // descendants() uses to cap a tree walk. A well-formed subtree has at most
     // this many nodes, so it is a safe ceiling for iterative walkers that need a
@@ -1669,6 +1678,31 @@ mod tests {
         assert_eq!(tree.len(), 1);
         let node = tree.get_node(tree.document()).unwrap();
         assert!(node.is_document());
+    }
+
+    #[test]
+    fn live_node_count_tracks_create_remove_and_slot_reuse() {
+        let tree = DomTree::new();
+        let doc = tree.document();
+        assert_eq!(tree.live_node_count(), tree.len());
+
+        let parent = element(&tree, "div");
+        let child = element(&tree, "span");
+        tree.append_child(doc, parent);
+        tree.append_child(parent, child);
+        assert_eq!(tree.live_node_count(), 3);
+
+        // Removing a subtree frees every node in it.
+        tree.remove(parent);
+        assert_eq!(tree.live_node_count(), 1);
+        assert_eq!(tree.live_node_count(), tree.len());
+
+        // Reused slots count as live again, without growing the arena.
+        let slots = tree.node_slot_count();
+        element(&tree, "p");
+        assert_eq!(tree.live_node_count(), 2);
+        assert_eq!(tree.node_slot_count(), slots);
+        assert_eq!(tree.live_node_count(), tree.len());
     }
 
     #[test]

@@ -1168,8 +1168,9 @@ fn op_dom(
     #[string] arg1: String,
     #[string] arg2: String,
     frame_id: u32,
-) -> String {
+) -> Result<String, deno_error::JsErrorBox> {
     let shared = frame_state(state, frame_id);
+    check_dom_node_budget(&shared, &cmd)?;
     // Anti-panic boundary: a panic in a DOM op would unwind through deno_core
     // into V8's FFI frame, where V8_Fatal calls abort(3) and takes the whole
     // engine (and every CDP client) down. Catch it so one malformed selector or
@@ -1179,10 +1180,63 @@ fn op_dom(
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         op_dom_inner(shared, cmd, arg1, arg2)
     }))
-    .unwrap_or_else(|_| {
+    .or_else(|_| {
         tracing::error!("op_dom panicked; returning null");
-        "null".to_string()
+        Ok("null".to_string())
     })
+}
+
+/// Maximum live nodes per document before node-creating DOM ops throw.
+/// The tree lives in Rust, outside the V8 heap limit, so without this a
+/// script looping on `createElement` grows native memory until the watchdog
+/// fires. Real pages stay around 100k nodes. Read once: this guards the
+/// hottest op. Configurable via `TELEMACO_MAX_DOM_NODES`.
+fn max_dom_nodes() -> usize {
+    static LIMIT: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *LIMIT.get_or_init(|| {
+        std::env::var("TELEMACO_MAX_DOM_NODES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(500_000)
+    })
+}
+
+/// Throw a `RangeError` when `cmd` would add nodes to a document already at
+/// its budget. Checked at op entry rather than per allocation, so one
+/// `innerHTML` may overshoot by the size of its own string (itself bounded by
+/// the V8 heap), and the parser's tree sink stays infallible.
+fn check_dom_node_budget(shared: &SharedState, cmd: &str) -> Result<(), deno_error::JsErrorBox> {
+    let creates_nodes = matches!(
+        cmd,
+        "create_element"
+            | "create_element_ns"
+            | "create_text_node"
+            | "create_comment_node"
+            | "create_processing_instruction"
+            | "create_doctype"
+            | "create_document_fragment"
+            | "template_contents"
+            | "clone_node"
+            | "set_inner_html"
+            | "set_inner_html_context"
+            | "set_fragment_html_executable"
+            | "set_text_content"
+            | "document_write"
+    );
+    if !creates_nodes {
+        return Ok(());
+    }
+    let limit = max_dom_nodes();
+    let live = match shared.borrow().dom.as_ref() {
+        Some(dom) => dom.live_node_count(),
+        None => return Ok(()),
+    };
+    if live >= limit {
+        return Err(deno_error::JsErrorBox::range_error(format!(
+            "DOM node limit exceeded ({limit} nodes); set TELEMACO_MAX_DOM_NODES to raise it"
+        )));
+    }
+    Ok(())
 }
 
 fn op_dom_inner(shared: SharedState, cmd: String, arg1: String, arg2: String) -> String {

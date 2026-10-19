@@ -4865,6 +4865,38 @@ mod tests {
     }
 
     #[test]
+    fn dom_node_budget_throws_range_error_and_page_stays_usable() {
+        // nextest runs each test in its own process, so the budget (read once)
+        // cannot leak into other tests.
+        std::env::set_var("TELEMACO_MAX_DOM_NODES", "500");
+        let mut rt = setup_runtime("<html><body><p id=\"kept\">kept</p></body></html>");
+        let result = rt
+            .evaluate(
+                r#"
+                let caught = null;
+                const sink = document.createElement("div");
+                try {
+                    for (let i = 0; i < 10000; i++) {
+                        sink.appendChild(document.createElement("span"));
+                    }
+                } catch (e) {
+                    caught = e instanceof RangeError;
+                }
+                let htmlCaught = false;
+                try { sink.innerHTML = "<b>x</b>"; } catch (e) { htmlCaught = e instanceof RangeError; }
+                return [
+                    caught,
+                    htmlCaught,
+                    sink.childNodes.length < 10000,
+                    document.getElementById("kept").textContent
+                ];
+                "#,
+            )
+            .unwrap();
+        assert_eq!(result, serde_json::json!([true, true, true, "kept"]));
+    }
+
+    #[test]
     fn create_element_synchronously_constructs_an_existing_definition() {
         let mut rt = setup_runtime("<html><body></body></html>");
         let result = rt
