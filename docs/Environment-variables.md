@@ -36,7 +36,7 @@ TELEMACO_NAV_CHAIN_LIMIT=20 telemaco serve
 
 ### `TELEMACO_SCRIPT_DEADLINE_MS`
 
-Soft deadline for the complete page script-execution phase, including classic scripts and ES modules. Default 30000 (30 seconds). Raise it for a heavy SPA whose initial module is responsible for mounting an otherwise empty document. The engine also uses this value as a hard V8 watchdog budget, with a one-second grace period, so a synchronous script cannot run forever.
+Soft deadline for the complete page script-execution phase, including classic scripts and ES modules. Default 30000 (30 seconds). Raise it for a heavy SPA whose initial module is responsible for mounting an otherwise empty document. The engine also uses this value as a hard V8 watchdog budget, with a one-second grace period, so a synchronous script cannot run forever. The page's navigation timeout caps it (`fetch --timeout`, `TELEMACO_NAV_TIMEOUT_MS`, or the timeout a CDP or MCP client sets), so raising it above the navigation timeout has no effect.
 
 ```bash
 TELEMACO_SCRIPT_DEADLINE_MS=60000 telemaco serve

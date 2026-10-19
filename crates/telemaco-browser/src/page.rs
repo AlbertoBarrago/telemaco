@@ -2029,10 +2029,16 @@ impl Page {
         // synchronous hang. Raise it further with TELEMACO_SCRIPT_DEADLINE_MS=<ms>
         // for very heavy SPAs on slow networks (pair it with a matching client
         // navigation timeout).
+        //
+        // Capped by the page's navigation timeout: that deadline is a tokio
+        // timeout, which cannot preempt synchronous V8, so without the cap a
+        // `while (true)` page under `fetch --timeout 3` ran until this 30s
+        // watchdog and the CLI's hard deadline killed the process first.
         let script_deadline_ms: u64 = std::env::var("TELEMACO_SCRIPT_DEADLINE_MS")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(30_000);
+            .unwrap_or(30_000)
+            .min(duration_millis_u64(self.navigation_timeout()));
         let script_deadline =
             tokio::time::Instant::now() + tokio::time::Duration::from_millis(script_deadline_ms);
 
@@ -5682,6 +5688,26 @@ mod tests {
         page.dom = Some(parse_html(html));
         page.init_js();
         page
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn navigation_timeout_bounds_a_synchronous_script_hang() {
+        // The navigation timeout is a tokio timeout and cannot preempt V8, so
+        // only the script watchdog can stop this loop. It must honor the
+        // page's 1s navigation timeout, not the 30s script default.
+        let mut page = import_map_test_page(
+            "sync-hang",
+            "http://127.0.0.1:9",
+            "<html><body><p>kept</p><script>while (true) {}</script></body></html>",
+        );
+        page.set_navigation_timeout(std::time::Duration::from_secs(1));
+        let start = std::time::Instant::now();
+        page.execute_scripts().await;
+        let elapsed = start.elapsed();
+        assert!(elapsed < std::time::Duration::from_secs(4), "took {elapsed:?}");
+
+        let after = page.js.as_mut().unwrap().evaluate("1 + 1").unwrap();
+        assert_eq!(after, serde_json::json!(2.0));
     }
 
     #[tokio::test(flavor = "current_thread")]
