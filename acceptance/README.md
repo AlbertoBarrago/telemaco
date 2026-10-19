@@ -10,7 +10,7 @@ CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features rend
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
 ```
 
-Expected result: **45/45**. The exit code is non-zero when any stage fails.
+Expected result: **46/46**. The exit code is non-zero when any stage fails.
 
 ## Why it exists
 
@@ -61,7 +61,7 @@ rather than the intended signal.
 | `js.` | 7 | DOM injection, timers, `fetch`, XHR, async/await, custom elements, DOM mutation order |
 | `extract.` | 6 | text, html, links, markdown, binary passthrough, asset enumeration |
 | `nav.` | 5 | redirect chains, meta refresh, 404, timeout, waiting for a selector |
-| `state.` | 4 | cookies, `--storage-dir`, localStorage, the `--eval` IIFE workaround |
+| `state.` | 5 | cookies, `--storage-dir`, Secure cookies on loopback, localStorage, the `--eval` IIFE workaround |
 | `hostile.` | 4 | DOM node bomb, infinite loop, zero-delay timer storm, endless response body |
 | `security.` | 3 | the SSRF gate closed and open, robots.txt |
 | `render.` | 3 | screenshot, viewport height, PDF |

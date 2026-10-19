@@ -528,7 +528,7 @@ cargo nextest run --release --features render --no-fail-fast
 ```
 
 The behavioral gate is the acceptance suite in
-[`acceptance/`](acceptance/README.md), 45 stages that must stay at 45/45:
+[`acceptance/`](acceptance/README.md), 46 stages that must stay at 46/46:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py

@@ -157,7 +157,7 @@ impl CookieJar {
     pub fn get_cookie_header(&self, url: &Url) -> String {
         let host = url.host_str().unwrap_or("");
         let path = url.path();
-        let is_secure = url.scheme() == "https";
+        let is_secure = is_secure_cookie_url(url);
         let cookies = self.cookies.read().unwrap();
 
         let mut matching: Vec<String> = Vec::new();
@@ -266,7 +266,7 @@ impl CookieJar {
     pub fn get_js_visible_cookies(&self, url: &Url) -> String {
         let host = url.host_str().unwrap_or("");
         let path = url.path();
-        let is_secure = url.scheme() == "https";
+        let is_secure = is_secure_cookie_url(url);
         let cookies = self.cookies.read().unwrap();
 
         let now = std::time::SystemTime::now()
@@ -613,6 +613,25 @@ fn path_matches(request_path: &str, cookie_path: &str) -> bool {
     cookie_path.ends_with('/') || request_path.as_bytes().get(cookie_path.len()) == Some(&b'/')
 }
 
+/// Whether `Secure` cookies may be sent to and read from `url`. Like Chrome,
+/// loopback hosts count as secure over plain HTTP (the Secure Contexts
+/// "potentially trustworthy" rule), so a local dev server that sets a
+/// `Secure` session cookie keeps its session.
+fn is_secure_cookie_url(url: &Url) -> bool {
+    if matches!(url.scheme(), "https" | "wss") {
+        return true;
+    }
+    match url.host() {
+        Some(url::Host::Domain(host)) => {
+            let host = host.trim_end_matches('.').to_ascii_lowercase();
+            host == "localhost" || host.ends_with(".localhost")
+        }
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
 fn domain_matches(host: &str, domain: &str) -> bool {
     // Avoid allocations on the hot path. Cookie lookup runs per fetch
     // (every subresource on a page) and walks every domain in the jar.
@@ -704,6 +723,34 @@ mod tests {
         let http_url = Url::parse("http://example.com/").unwrap();
         let header = jar.get_cookie_header(&http_url);
         assert!(header.is_empty());
+    }
+
+    #[test]
+    fn secure_cookie_is_sent_to_loopback_over_http() {
+        // Chrome treats loopback as a secure context, so a local dev server's
+        // Secure session cookie must round-trip over plain HTTP.
+        for origin in [
+            "http://localhost:3000/",
+            "http://app.localhost/",
+            "http://127.0.0.1:8080/",
+            "http://127.1.2.3/",
+            "http://[::1]:5173/",
+        ] {
+            let jar = CookieJar::new();
+            let url = Url::parse(origin).unwrap();
+            jar.set_cookie("sid=1; Secure; Path=/", &url);
+            jar.set_cookie_from_js("js_sid=1; Secure; path=/", &url);
+            let header = jar.get_cookie_header(&url);
+            assert!(header.contains("sid=1") && header.contains("js_sid=1"), "{origin}: {header}");
+            assert!(jar.get_js_visible_cookies(&url).contains("js_sid=1"), "{origin}");
+        }
+
+        // A non-loopback host over plain HTTP stays excluded.
+        let jar = CookieJar::new();
+        let url = Url::parse("http://example.com/").unwrap();
+        jar.set_cookie("sid=1; Secure; Path=/", &url);
+        assert!(jar.get_cookie_header(&url).is_empty());
+        assert!(jar.get_js_visible_cookies(&url).is_empty());
     }
 
     #[test]

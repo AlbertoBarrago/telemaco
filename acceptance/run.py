@@ -65,6 +65,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Slower than the timeouts the timeout stage uses.
             time.sleep(8)
             return self._plain("late")
+        if path == "/secure-cookie":
+            return self._secure_cookie()
         if path == "/endless":
             return self._endless()
         if path == "/gone":
@@ -77,6 +79,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Location", target)
         self.send_header("Content-Length", "0")
         self.end_headers()
+
+    def _secure_cookie(self) -> None:
+        # Sets a Secure cookie over plain HTTP on loopback and echoes back the
+        # Cookie header it received, so a second load shows the round trip.
+        raw = f"<html><body><p>COOKIE:{self.headers.get('Cookie') or 'NONE'}</p></body></html>".encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Set-Cookie", "acc_secure=1; Secure; Path=/")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
 
     def _endless(self) -> None:
         # A body that never ends, without Content-Length: only a body cap or a
@@ -309,6 +322,19 @@ def state_storage_dir(u):
         cli("fetch", f"{u}/index.html", "-q", "--storage-dir", d, "--dump", "text")
         r = cli("fetch", f"{u}/page2.html", "-q", "--storage-dir", d, "--dump", "cookies")
         return "acc_cookie" in r
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def state_secure_cookie_loopback(u):
+    # Chrome treats loopback as a secure context: a Secure cookie set over
+    # plain HTTP on 127.0.0.1 must be sent back, or local login flows lose
+    # their session on the next request.
+    d = tempfile.mkdtemp(prefix="acc-secure-")
+    try:
+        cli("fetch", f"{u}/secure-cookie", "-q", "--storage-dir", d, "--dump", "text")
+        r = cli("fetch", f"{u}/secure-cookie", "-q", "--storage-dir", d, "--dump", "text")
+        return "acc_secure=1" in r
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
@@ -589,6 +615,7 @@ STAGES: list[tuple[str, object]] = [
     ("nav.wait-for-selector", nav_wait_for_selector),
     ("state.cookies", state_cookies),
     ("state.storage-dir", state_storage_dir),
+    ("state.secure-cookie-loopback", state_secure_cookie_loopback),
     ("state.local-storage", state_local_storage),
     ("state.eval-iife", state_eval_iife),
     ("hostile.node-bomb", hostile_node_bomb),
