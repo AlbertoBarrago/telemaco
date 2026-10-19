@@ -18,7 +18,10 @@ from pathlib import Path
 
 
 MAX_RESULT_BYTES = 10 * 1024 * 1024
-EXPECTED_STAGE_COUNT = 41
+# A floor, not an exact count: this script is read from the base revision, so
+# an exact count would fail every PR that adds stages. Raise it when stages
+# land; a PR still cannot drop below it.
+MIN_STAGE_COUNT = 41
 
 
 def load_result(path: Path) -> dict:
@@ -68,13 +71,13 @@ def main() -> None:
 
     base = result_map(load_result(args.base))
     candidate = result_map(load_result(args.candidate))
-    if len(base) != EXPECTED_STAGE_COUNT:
+    if len(base) < MIN_STAGE_COUNT:
         raise SystemExit(
-            f"base acceptance result has {len(base)} stages; expected {EXPECTED_STAGE_COUNT}"
+            f"base acceptance result has {len(base)} stages; expected at least {MIN_STAGE_COUNT}"
         )
-    if len(candidate) != EXPECTED_STAGE_COUNT:
+    if len(candidate) < MIN_STAGE_COUNT:
         raise SystemExit(
-            f"candidate acceptance result has {len(candidate)} stages; expected {EXPECTED_STAGE_COUNT}"
+            f"candidate acceptance result has {len(candidate)} stages; expected at least {MIN_STAGE_COUNT}"
         )
     if set(base) != set(candidate):
         missing = sorted(set(base) - set(candidate))
