@@ -5,6 +5,18 @@ All notable changes to Telemaco are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-10-19
+
+### Fixed
+
+- **`Secure` cookies did not work on a local dev server.** The cookie jar
+  treated only `https` as secure, so a `Secure` session cookie set by
+  `http://localhost` was stored but never sent back or shown in
+  `document.cookie`, and local login flows lost their session on the next
+  request. Like Chrome, loopback hosts (`localhost`, `*.localhost`,
+  `127.0.0.0/8`, `::1`) now count as secure. A new acceptance stage covers
+  it; the suite is now 46 stages.
+
 ## [0.2.4] - 2026-10-19
 
 ### Added
@@ -103,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the lifecycle hook, but not the Apex content loading, which remains
   unresolved. The rest of the engine works normally.
 
+[0.2.5]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.5
 [0.2.4]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.4
 [0.2.3]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.3
 [0.2.2]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.2
