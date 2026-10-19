@@ -5,6 +5,36 @@ All notable changes to Telemaco are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-10-19
+
+### Added
+
+- **A per-document DOM node budget.** Node-creating DOM calls
+  (`createElement`, `cloneNode`, `innerHTML`, `document.write`, and similar)
+  throw a catchable `RangeError` once a document holds 500,000 live nodes.
+  The tree lives outside the V8 heap limit, so a script that grew the DOM
+  without bound reached 4.6 GB of resident memory before the script watchdog
+  stopped it; it now stops at about 550 MB in 2.4 seconds. Configure it with
+  `TELEMACO_MAX_DOM_NODES`.
+- **Hostile-page acceptance stages.** Four `hostile.*` stages (a node bomb,
+  `while (true)`, a zero-delay timer storm, an endless response body) turn
+  the robustness invariants into a gate. The suite is now 45 stages.
+
+### Fixed
+
+- **`fetch --timeout` did not stop a synchronous script.** The navigation
+  timeout cannot preempt V8, and the script watchdog ignored it in favor of
+  `TELEMACO_SCRIPT_DEADLINE_MS` (30 seconds), so a `while (true)` page under
+  `--timeout 3` was killed by the process hard deadline after 18 seconds with
+  no output. The script deadline is now capped at the page's navigation
+  timeout, and the page returns in about 4 seconds. This also applies to the
+  navigation timeouts set by CDP and MCP clients.
+- **`rustls` updated to 0.23.46** for RUSTSEC-2026-0346, RUSTSEC-2026-0347,
+  RUSTSEC-2026-0348 and RUSTSEC-2026-0349.
+- **CI failed every pull request that added acceptance stages.** The
+  comparison script, read from the base revision, required exactly 41
+  stages; the count is now a floor.
+
 ## [0.2.3] - 2026-09-29
 
 ### Fixed
@@ -73,6 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the lifecycle hook, but not the Apex content loading, which remains
   unresolved. The rest of the engine works normally.
 
+[0.2.4]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.4
 [0.2.3]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.3
 [0.2.2]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.2
 [0.2.1]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.1
