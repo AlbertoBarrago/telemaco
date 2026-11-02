@@ -1647,7 +1647,7 @@ impl TelemacoJsRuntime {
 
     pub fn evaluate(&mut self, expression: &str) -> Result<serde_json::Value, String> {
         self.begin_javascript_task();
-        let wrapped = Self::wrap_expression(expression);
+        let wrapped = Self::wrap_expression(expression, true);
         let result = self
             .execute_runtime_script("<eval>", wrapped)
             .map_err(|e| format!("JS error: {}", e))?;
@@ -2949,22 +2949,26 @@ impl TelemacoJsRuntime {
             return self.evaluate(expression);
         }
         self.begin_javascript_task();
-        let wrapped = Self::wrap_expression(expression);
+        let wrapped = Self::wrap_expression(expression, false);
         let token = self.arm_watchdog(timeout);
-        let result = self.runtime.execute_script("<eval>", wrapped);
+        // JSON conversion can execute page getters, proxies and toJSON, so it
+        // belongs to the same watchdog budget as the expression itself.
+        let result = self.runtime.execute_script("<eval>", wrapped)
+            .map_err(|error| format!("JS error: {error}"))
+            .and_then(|value| self.v8_to_json(value));
         let fired = self.disarm_watchdog(token);
         if self.recover_heap_limit() {
             return Err("JavaScript heap limit exceeded; execution terminated".to_string());
         }
         match result {
-            Ok(v) if !fired => self.v8_to_json(v),
+            Ok(v) if !fired => Ok(v),
             Ok(_) => Err("eval timed out".to_string()),
             Err(e) => {
                 let msg = e.to_string();
                 if fired || msg.contains("execution terminated") {
                     Err("eval timed out".to_string())
                 } else {
-                    Err(format!("JS error: {}", msg))
+                    Err(msg)
                 }
             }
         }
@@ -3109,7 +3113,7 @@ impl TelemacoJsRuntime {
         format!("{{\"injectedScriptId\":1,\"id\":{}}}", counter)
     }
 
-    fn wrap_expression(expression: &str) -> String {
+    fn wrap_expression(expression: &str, suppress_errors: bool) -> String {
         let trimmed = expression.trim();
 
         let is_multi_statement = trimmed.starts_with("var ")
@@ -3120,11 +3124,8 @@ impl TelemacoJsRuntime {
             || trimmed.starts_with("while ")
             || trimmed.starts_with("return ");
 
-        if is_multi_statement {
-            format!(
-                "(function() {{ try {{\n{}\n}} catch(e) {{ return null; }} }})()",
-                expression
-            )
+        let body = if is_multi_statement {
+            expression.to_string()
         } else {
             // Strip trailing semicolons + whitespace before wrapping in
             // `return (...);`. Playwright's utility-script expression is
@@ -3138,10 +3139,12 @@ impl TelemacoJsRuntime {
             // `//# sourceURL=...` line comment the caller may have appended
             // (Puppeteer's evaluated bundles do).
             let cleaned = trimmed.trim_end_matches(|c: char| c == ';' || c.is_whitespace());
-            format!(
-                "(function() {{ try {{ return (\n{}\n); }} catch(e) {{ return null; }} }})()",
-                cleaned
-            )
+            format!("return (\n{}\n);", cleaned)
+        };
+        if suppress_errors {
+            format!("(function() {{ try {{\n{body}\n}} catch(e) {{ return null; }} }})()")
+        } else {
+            format!("(function() {{\n{body}\n}})()")
         }
     }
 

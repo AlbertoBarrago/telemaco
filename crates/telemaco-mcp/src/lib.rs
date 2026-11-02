@@ -503,7 +503,8 @@ fn handle_tools_list(id: Value, limits: &ExtractionLimits) -> RpcResponse {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "expression": { "type": "string", "description": "JavaScript expression to evaluate" }
+                        "expression": { "type": "string", "description": "JavaScript expression to evaluate" },
+                        "timeout": { "type": "number", "exclusiveMinimum": 0, "maximum": 30, "description": "Synchronous JavaScript budget in seconds (default: 30, maximum: 30). Timeout is reported as a tool error; completed mutations are retained." }
                     },
                     "required": ["expression"]
                 }
@@ -1236,7 +1237,16 @@ async fn tool_evaluate(args: &Value, state: &mut BrowserState) -> Result<String,
     let expression = args.get("expression").and_then(Value::as_str)
         .ok_or("Missing expression parameter")?;
 
-    let result = state.page_mut().evaluate(expression);
+    let timeout_secs = match args.get("timeout") {
+        None => 30.0,
+        Some(value) => value.as_f64()
+            .filter(|seconds| seconds.is_finite() && *seconds > 0.0 && *seconds <= 30.0)
+            .ok_or("timeout must be a number greater than 0 and at most 30 seconds")?,
+    };
+    // Round tiny positive budgets up so Duration never disables the watchdog.
+    let timeout = std::time::Duration::from_secs_f64(timeout_secs)
+        .max(std::time::Duration::from_nanos(1));
+    let result = state.page_mut().try_evaluate_with_timeout(expression, timeout)?;
     state.settle_synthetic_navigation().await?;
     Ok(match &result {
         Value::String(s) => s.clone(),
