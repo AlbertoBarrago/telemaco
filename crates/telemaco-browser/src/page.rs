@@ -3862,6 +3862,25 @@ impl Page {
         }
     }
 
+    /// Evaluate with a watchdog and a byte limit before copying results from V8.
+    pub fn try_evaluate_with_result_limit(
+        &mut self,
+        expression: &str,
+        timeout: std::time::Duration,
+        max_result_bytes: usize,
+    ) -> Result<serde_json::Value, String> {
+        match self.js.as_mut() {
+            Some(js) => js.evaluate_with_result_limit(expression, timeout, max_result_bytes),
+            None => {
+                let result = self.evaluate(expression);
+                if result.as_str().is_some_and(|text| text.len() > max_result_bytes) {
+                    return Err(format!("evaluation result exceeds {max_result_bytes} byte limit"));
+                }
+                Ok(result)
+            }
+        }
+    }
+
     pub fn evaluate(&mut self, expression: &str) -> serde_json::Value {
         if let Some(js) = &mut self.js {
             match js.evaluate(expression) {
@@ -5734,6 +5753,23 @@ mod tests {
         assert_eq!(page.try_evaluate_with_timeout("1+1", budget), Ok(serde_json::json!(2.0)));
         // Existing callers intentionally retain the null-on-error contract.
         assert_eq!(page.evaluate_with_timeout("(function(){throw new Error('legacy')})()", budget), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn evaluation_result_limit_does_not_cap_legacy_evaluation() {
+        let mut page = import_map_test_page(
+            "eval-result-limit", "http://127.0.0.1:9", "<html><body></body></html>",
+        );
+        let budget = std::time::Duration::from_secs(1);
+        let expression = "'x'.repeat(32)";
+        let error = page.try_evaluate_with_result_limit(expression, budget, 8).unwrap_err();
+        assert!(error.contains("byte limit"), "{error}");
+        assert_eq!(page.try_evaluate_with_timeout(expression, budget), Ok(serde_json::json!("x".repeat(32))));
+        assert_eq!(page.try_evaluate_with_result_limit("'ok'", budget, 8), Ok(serde_json::json!("ok")));
+        page.suspend_js();
+        assert_eq!(page.try_evaluate_with_result_limit("1+1", budget, 8), Ok(serde_json::Value::Null));
+        page.title = "x".repeat(32);
+        assert!(page.try_evaluate_with_result_limit("document.title", budget, 8).unwrap_err().contains("byte limit"));
     }
 
     #[tokio::test(flavor = "current_thread")]

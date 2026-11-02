@@ -91,6 +91,71 @@ fn evaluation_timeout_and_recovery() {
     let untouched = call(port, "browser_evaluate", json!({"expression": "typeof shouldNotRun"}));
     assert_eq!(untouched["content"][0]["text"], "undefined");
 
+    const RESULT_CAP: usize = 1024 * 1024;
+    let at_limit = call(port, "browser_evaluate", json!({
+        "expression": format!("'x'.repeat({RESULT_CAP})"),
+    }));
+    assert_ne!(at_limit["isError"], true, "at-limit direct string must succeed");
+    let at_limit_text = at_limit["content"][0]["text"].as_str().unwrap();
+    assert_eq!(at_limit_text.len(), RESULT_CAP);
+    assert!(at_limit_text.bytes().all(|byte| byte == b'x'));
+
+    let multibyte_at_limit = call(port, "browser_evaluate", json!({
+        "expression": format!("'é'.repeat({})", RESULT_CAP / 2),
+    }));
+    assert_ne!(multibyte_at_limit["isError"], true, "at-limit multibyte string must succeed");
+    assert_eq!(
+        multibyte_at_limit["content"][0]["text"].as_str().unwrap().len(),
+        RESULT_CAP,
+    );
+
+    let object_at_limit = call(port, "browser_evaluate", json!({
+        "expression": format!("({{data:'x'.repeat({})}})", RESULT_CAP - 16),
+    }));
+    assert_ne!(object_at_limit["isError"], true, "at-limit formatted object must succeed");
+    assert_eq!(object_at_limit["content"][0]["text"].as_str().unwrap().len(), RESULT_CAP);
+
+    for (label, expression) in [
+        (
+            "direct string above the byte cap",
+            format!("'x'.repeat({})", RESULT_CAP + 1),
+        ),
+        (
+            "multibyte string above the byte cap",
+            format!("'é'.repeat({})", RESULT_CAP / 2 + 1),
+        ),
+        (
+            "object compact JSON above the byte cap",
+            format!("({{data:'x'.repeat({RESULT_CAP})}})"),
+        ),
+        (
+            "pretty output above the byte cap",
+            "Array(180000).fill('x')".to_string(),
+        ),
+        (
+            "custom stringify non-string conversion above the byte cap",
+            format!(
+                "(function(){{const original=JSON.stringify;JSON.stringify=function(){{try{{return {{toString(){{return 'x'.repeat({})}}}}}}finally{{JSON.stringify=original}}}};return {{value:1}}}})()",
+                RESULT_CAP + 1,
+            ),
+        ),
+        (
+            "fallback object conversion above the byte cap",
+            format!(
+                "(function(){{const original=JSON.stringify;JSON.stringify=function(){{try{{return undefined}}finally{{JSON.stringify=original}}}};return {{toString(){{return 'x'.repeat({})}}}}}})()",
+                RESULT_CAP + 1,
+            ),
+        ),
+    ] {
+        let result = call(port, "browser_evaluate", json!({"expression": expression}));
+        assert_eq!(result["isError"], true, "{label}");
+        assert!(result["content"][0]["text"].as_str().unwrap().contains("byte limit"), "{label}");
+
+        let recovered = call(port, "browser_evaluate", json!({"expression": "1+1"}));
+        assert_ne!(recovered["isError"], true, "recovery after {label}");
+        assert_eq!(recovered["content"][0]["text"], "2.0");
+    }
+
     // Repeated termination must preserve valid null results and permit later
     // JavaScript, DOM access, drawing, navigation and capture on this session.
     for expression in [

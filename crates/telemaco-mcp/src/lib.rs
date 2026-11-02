@@ -21,6 +21,8 @@ use crate::config::ExtractionLimits;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+const MAX_EVALUATION_RESULT_BYTES: usize = 1024 * 1024;
+
 #[derive(Deserialize)]
 struct RpcMessage {
     #[allow(dead_code)]
@@ -499,7 +501,7 @@ fn handle_tools_list(id: Value, limits: &ExtractionLimits) -> RpcResponse {
             },
             {
                 "name": "browser_evaluate",
-                "description": "Evaluate a JavaScript expression in the page context and return the result",
+                "description": "Evaluate a JavaScript expression in the page context and return the result. Results exceeding 1 MiB of UTF-8 text return a tool error.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -1233,6 +1235,24 @@ fn tool_select_option(args: &Value, state: &mut BrowserState) -> Result<String, 
     }
 }
 
+// Pretty-printing can expand compact JSON substantially. Stop writes at the
+// result cap rather than allocating the full formatted response first.
+struct EvaluationOutput(Vec<u8>);
+
+impl std::io::Write for EvaluationOutput {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > MAX_EVALUATION_RESULT_BYTES.saturating_sub(self.0.len()) {
+            return Err(std::io::Error::other(format!(
+                "evaluation result exceeds {MAX_EVALUATION_RESULT_BYTES} byte limit",
+            )));
+        }
+        self.0.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+}
+
 async fn tool_evaluate(args: &Value, state: &mut BrowserState) -> Result<String, String> {
     let expression = args.get("expression").and_then(Value::as_str)
         .ok_or("Missing expression parameter")?;
@@ -1246,13 +1266,16 @@ async fn tool_evaluate(args: &Value, state: &mut BrowserState) -> Result<String,
     // Round tiny positive budgets up so Duration never disables the watchdog.
     let timeout = std::time::Duration::from_secs_f64(timeout_secs)
         .max(std::time::Duration::from_nanos(1));
-    let result = state.page_mut().try_evaluate_with_timeout(expression, timeout)?;
+    let result = state.page_mut().try_evaluate_with_result_limit(
+        expression, timeout, MAX_EVALUATION_RESULT_BYTES,
+    )?;
     state.settle_synthetic_navigation().await?;
-    Ok(match &result {
-        Value::String(s) => s.clone(),
-        Value::Null => "null".to_string(),
-        other => serde_json::to_string_pretty(other).unwrap_or_default(),
-    })
+    if let Value::String(text) = result {
+        return Ok(text);
+    }
+    let mut output = EvaluationOutput(Vec::new());
+    serde_json::to_writer_pretty(&mut output, &result).map_err(|error| error.to_string())?;
+    String::from_utf8(output.0).map_err(|error| error.to_string())
 }
 
 async fn tool_wait_for(args: &Value, state: &mut BrowserState) -> Result<String, String> {
