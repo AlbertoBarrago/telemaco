@@ -15,7 +15,7 @@
     <a href="https://github.com/AlbertoBarrago/telemaco/blob/main/LICENSE"><img src="https://img.shields.io/github/license/AlbertoBarrago/telemaco?style=for-the-badge&label=license&color=9AA7B8" alt="License"></a>
     <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AlbertoBarrago/telemaco/ci.yml?style=for-the-badge&label=CI&color=45B1F8" alt="CI"></a>
     <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.85%2B-45B1F8?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"></a>
-    <a href="https://github.com/AlbertoBarrago/telemaco"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-9AA7B8?style=for-the-badge" alt="Platforms"></a>
+    <a href="https://github.com/AlbertoBarrago/telemaco"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-9AA7B8?style=for-the-badge" alt="Platforms"></a>
   </p>
 </div>
 

@@ -34,7 +34,8 @@ tar xzf telemaco-x86_64-macos.tar.gz
 
 ## Windows
 
-Download the `.zip` from [Releases](https://github.com/AlbertoBarrago/telemaco/releases), extract, run `telemaco.exe --version`.
+New releases do not include prebuilt Windows binaries. To run on Windows,
+see [Build from source](Build-from-source.md).
 
 ## Arch Linux (AUR)
 

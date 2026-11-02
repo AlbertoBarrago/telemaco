@@ -123,7 +123,7 @@ fi
 printf '  commit  chore(release): %s\n' "$VERSION"
 printf '  tag     %s (annotated, on the new commit)\n' "$TAG"
 printf '  push    main and %s to origin\n' "$TAG"
-printf '\n  the tag starts release.yml (archives for 5 targets x 4 variants)\n\n'
+printf '\n  the tag starts release.yml (archives for 4 targets x 4 variants)\n\n'
 
 if [[ $DRY_RUN -eq 1 ]]; then
   note "dry run: nothing was written"
