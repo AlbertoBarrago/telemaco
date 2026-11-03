@@ -137,6 +137,8 @@ pub use paint::{
 // `dom.rs` name `inline::TextEngine` and call `try_build` unconditionally.
 #[cfg(feature = "paint")]
 pub mod inline;
+#[cfg(feature = "paint")]
+pub mod canvas;
 
 #[cfg(not(feature = "paint"))]
 pub mod inline {

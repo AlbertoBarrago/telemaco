@@ -417,57 +417,45 @@ impl TelemacoJsRuntime {
         Some(context)
     }
 
-    /// Copies deno_core's per-context bookkeeping from the main context onto a
-    /// realm we built ourselves.
-    ///
-    /// deno_core installs isolate-wide callbacks, and they resolve their state
-    /// from whatever context happens to be current. `promise_reject_callback`
-    /// reads a `ContextState` pointer out of an embedder data slot with a
-    /// "valid and set during realm creation" safety comment: it assumes every
-    /// context in the isolate is one deno_core created. Ours is not. A promise
-    /// rejected with no handler inside a frame realm therefore made it read a
-    /// null slot and dereference it, segfaulting the process, which is what
-    /// real pages do constantly through third-party frames (reproduced on
-    /// cursor.com, EXC_BAD_ACCESS at 0xfffffffffffffff0, the refcount field of
-    /// a null `Rc`).
-    ///
-    /// Pointing the frame's slots at the main realm's state makes the callbacks
-    /// find what they expect. A rejection inside a frame is then reported
-    /// against the main realm, which is a reporting detail rather than a crash.
-    /// The main context owns the state and outlives every frame realm, since
-    /// the realms hang off this runtime.
-    pub(crate) fn share_context_state_with_realm(
+    pub(crate) fn attach_frame_module_realm(
         &mut self,
-        realm: &deno_core::v8::Global<deno_core::v8::Context>,
-    ) {
-        use deno_core::v8;
+        context: deno_core::v8::Global<deno_core::v8::Context>,
+        state: &crate::ops::SharedState,
+    ) -> deno_core::ModuleRealm {
+        let frame = state.borrow();
+        let loader = TelemacoModuleLoader::with_page_state(
+            &frame.url, None, state, frame.import_map.clone(),
+        );
+        self.runtime.attach_module_realm(context, Rc::new(loader))
+    }
 
-        // The slot indices deno_core reserves per context (`CONTEXT_STATE_SLOT_INDEX`
-        // and `MODULE_MAP_SLOT_INDEX` in its `runtime::jsrealm`). They are not
-        // exported, so they are named here and copied verbatim rather than
-        // guessed at: a wrong index would write over unrelated embedder data.
-        const DENO_CONTEXT_SLOTS: [i32; 2] = [0, 1];
-
-        let main = self.runtime.main_context();
-        let isolate = self.runtime.v8_isolate();
-        let scope = &mut v8::HandleScope::new(isolate);
-        let main_context = v8::Local::new(scope, main);
-        let realm_context = v8::Local::new(scope, realm);
-
-        for slot in DENO_CONTEXT_SLOTS {
-            // SAFETY: the pointer is read from a slot deno_core populated on the
-            // main context and written to the same slot index on another context
-            // of the same isolate. It is borrowed, not owned: the main context
-            // keeps the only strong reference, and the callbacks that read it
-            // clone the `Rc` themselves before using it.
-            unsafe {
-                let state = main_context.get_aligned_pointer_from_embedder_data(slot);
-                if state.is_null() {
-                    continue;
-                }
-                realm_context.set_aligned_pointer_in_embedder_data(slot, state);
+    pub(crate) async fn load_frame_module(
+        &mut self,
+        realm: &deno_core::ModuleRealm,
+        url: &str,
+        code: Option<String>,
+        budget_ms: u64,
+    ) -> Result<(), String> {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(budget_ms);
+        let specifier = deno_core::ModuleSpecifier::parse(url).map_err(|e| e.to_string())?;
+        let loaded = tokio::time::timeout_at(deadline,
+            realm.load(self.runtime.v8_isolate(), &specifier, code.map(Into::into)),
+        ).await.map_err(|_| "Frame module graph timed out".to_string())?
+            .map_err(|e| e.to_string())?;
+        let remaining = remaining_deadline_ms(deadline).ok_or("Frame module budget exhausted")?;
+        let watchdog = self.arm_watchdog(std::time::Duration::from_millis(remaining));
+        let outcome = match realm.evaluate(self.runtime.v8_isolate(), loaded) {
+            Ok(promise) => {
+                let evaluation = realm.resolve(self.runtime.v8_isolate(), promise);
+                tokio::time::timeout_at(deadline,
+                    self.runtime.with_event_loop_promise(evaluation, Default::default()),
+                ).await.map_err(|_| "Frame module evaluation timed out".to_string())
+                    .and_then(|result| result.map(|_| ()).map_err(|error| error.to_string()))
             }
-        }
+            Err(error) => Err(error.to_string()),
+        };
+        self.disarm_watchdog(watchdog);
+        self.finish_heap_checked(outcome)
     }
 
     /// Takes the ops object bootstrap handed out, and removes the handoff from
@@ -898,6 +886,7 @@ impl TelemacoJsRuntime {
             gs.stylesheet_cache = telemaco_render::StylesheetCache::default();
             gs.dynamic_fonts.clear();
             gs.canvas_surfaces.clear();
+            gs.canvas_text_engine = None;
             gs.scroll_offset = (0.0, 0.0);
             gs.element_scroll_offsets.clear();
             gs.scroll_generation = 0;
@@ -3440,6 +3429,382 @@ mod tests {
         rt.set_title("Test Page");
         rt.run_page_init();
         rt
+    }
+
+    fn compressed_bytes(format: &str, input: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+        match format {
+            "gzip" => {
+                let mut encoder = flate2::GzBuilder::new().filename("fixture").comment("stream")
+                    .write(Vec::new(), flate2::Compression::default());
+                encoder.write_all(input).unwrap();
+                encoder.finish().unwrap()
+            }
+            "deflate" => {
+                let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+                encoder.write_all(input).unwrap();
+                encoder.finish().unwrap()
+            }
+            "deflate-raw" => {
+                let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+                encoder.write_all(input).unwrap();
+                encoder.finish().unwrap()
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_formats_chunks_and_buffers() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        for format in ["deflate-raw", "deflate", "gzip"] {
+            let bytes = compressed_bytes(format, b"hello");
+            let function = format!(r#"async () => {{
+                const bytes = new Uint8Array({bytes:?});
+                const results = [];
+                for (const mode of ['blob', 'bytes', 'view', 'buffer']) {{
+                    const decoder = new DecompressionStream('{format}');
+                    if (mode === 'blob') {{
+                        results.push(await new Response(new Blob([bytes]).stream().pipeThrough(decoder)).text());
+                        continue;
+                    }}
+                    const reading = new Response(decoder.readable).text();
+                    const writer = decoder.writable.getWriter();
+                    await writer.write(new Uint8Array());
+                    for (const byte of bytes) {{
+                        const input = new Uint8Array([99, byte, 88]);
+                        await writer.write(mode === 'view' ? new DataView(input.buffer, 1, 1) :
+                            mode === 'buffer' ? new Uint8Array([byte]).buffer : input.subarray(1, 2));
+                    }}
+                    await writer.close();
+                    results.push(await reading);
+                }}
+                return results;
+            }}"#);
+            let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+            assert_eq!(result.value.unwrap(), serde_json::json!(["hello", "hello", "hello", "hello"]), "{format}");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_issue14_fixture() {
+        let mut rt = setup_runtime("<html><body><pre id=result>pending</pre></body></html>");
+        let result = rt.call_function_on_for_cdp(r#"async () => {
+            const compressed = new Uint8Array([1,5,0,250,255,104,101,108,108,111]);
+            const decoded = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+            document.getElementById('result').textContent = await new Response(decoded).text();
+            return document.getElementById('result').textContent;
+        }"#, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!("hello"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_invalid_truncated_and_trailing_data() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let mut cases = Vec::new();
+        for format in ["deflate-raw", "deflate", "gzip"] {
+            let valid = compressed_bytes(format, b"hello");
+            cases.push((format, Vec::new()));
+            cases.push((format, vec![255, 255, 255]));
+            cases.push((format, valid[..valid.len() - 1].to_vec()));
+            let mut trailing = valid.clone();
+            trailing.push(0);
+            cases.push((format, trailing));
+            if format != "deflate-raw" {
+                let mut corrupt = valid;
+                let index = corrupt.len() - if format == "gzip" { 8 } else { 1 };
+                corrupt[index] ^= 1;
+                cases.push((format, corrupt));
+            }
+            if format == "gzip" {
+                let mut members = compressed_bytes(format, b"hello");
+                members.extend(compressed_bytes(format, b"again"));
+                cases.push((format, members));
+            }
+        }
+        cases.push(("deflate", vec![0x78, 0x20, 0, 0, 0, 1])); // Unsupported preset dictionary.
+        let mut reserved = compressed_bytes("gzip", b"hello");
+        reserved[3] |= 0x20;
+        cases.push(("gzip", reserved));
+        for (format, bytes) in cases {
+            let function = format!(r#"async () => {{
+                const stream = new DecompressionStream('{format}');
+                const reading = new Response(stream.readable).text().then(() => 'ok', e => e.name);
+                const writer = stream.writable.getWriter();
+                let writing = 'ok';
+                try {{ await writer.write(new Uint8Array({bytes:?})); await writer.close(); }}
+                catch (e) {{ writing = e.name; }}
+                return [writing, await reading];
+            }}"#);
+            let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+            assert_eq!(result.value.unwrap(), serde_json::json!(["TypeError", "TypeError"]), "{format}: {bytes:?}");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_large_output_backpressure_and_cancel() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let bytes = compressed_bytes("gzip", &vec![b'x'; 300_000]);
+        let function = format!(r#"async () => {{
+            const bytes = new Uint8Array({bytes:?});
+            const text = await new Response(new Blob([bytes]).stream()
+                .pipeThrough(new DecompressionStream('gzip'))).text();
+            const stream = new DecompressionStream('gzip');
+            const writer = stream.writable.getWriter();
+            let settled = false;
+            const writing = writer.write(bytes).then(() => {{ settled = true; return 'ok'; }}, e => e);
+            for (let i = 0; i < 10; i++) await Promise.resolve();
+            const blocked = !settled;
+            const reader = stream.readable.getReader();
+            const first = await reader.read();
+            await reader.cancel('stop');
+            const cancelled = await writing;
+            const after = await writer.write(bytes).then(() => 'ok', e => e);
+            return [text.length, /^x+$/.test(text), blocked, first.value.length, cancelled, after];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!([300000, true, true, 65536, "stop", "stop"]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_validation_empty_payload_and_abort() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let empty = compressed_bytes("deflate-raw", b"");
+        let function = format!(r#"async () => {{
+            const unsupported = [];
+            for (const format of ['br', 'GZIP', '', undefined, null]) {{
+                try {{ new DecompressionStream(format); unsupported.push('ok'); }}
+                catch (e) {{ unsupported.push(e.name); }}
+            }}
+            const empty = await new Response(new Blob([new Uint8Array({empty:?})]).stream()
+                .pipeThrough(new DecompressionStream('deflate-raw'))).text();
+            const stream = new DecompressionStream('deflate-raw');
+            const reading = new Response(stream.readable).text().then(() => 'ok', e => e);
+            await stream.writable.abort('abort');
+            const invalid = new DecompressionStream('deflate-raw');
+            const invalidRead = new Response(invalid.readable).text().then(() => 'ok', e => e.name);
+            const invalidWrite = await invalid.writable.getWriter().write('bad').then(() => 'ok', e => e.name);
+            return [unsupported, empty, await reading, invalidWrite, await invalidRead];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!([
+            ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError"], "", "abort", "TypeError", "TypeError"
+        ]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_pending_abort_and_upstream_cancellation() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let bytes = compressed_bytes("deflate", &vec![b'x'; 300_000]);
+        let function = format!(r#"async () => {{
+            const bytes = new Uint8Array({bytes:?});
+            const stream = new DecompressionStream('deflate');
+            const writer = stream.writable.getWriter();
+            const writing = writer.write(bytes).then(() => 'ok', e => e);
+            for (let i = 0; i < 10; i++) await Promise.resolve();
+            await writer.abort('stop');
+            const reading = await stream.readable.getReader().read().then(() => 'ok', e => e);
+            let cancelled;
+            const source = new ReadableStream({{
+                start(c) {{ c.enqueue(bytes); }},
+                cancel(reason) {{ cancelled = reason; }},
+            }});
+            const decoder = new DecompressionStream('deflate');
+            const piping = source.pipeTo(decoder.writable).then(() => 'ok', e => e);
+            const reader = decoder.readable.getReader();
+            await reader.read();
+            await reader.cancel('upstream');
+            let idleCancelled;
+            const idleSource = new ReadableStream({{ cancel(reason) {{ idleCancelled = reason; }} }});
+            const idleDecoder = new DecompressionStream('deflate');
+            const idlePiping = idleSource.pipeTo(idleDecoder.writable).then(() => 'ok', e => e);
+            await idleDecoder.readable.cancel('idle');
+            return [await writing, reading, await piping, cancelled, await idlePiping, idleCancelled];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!(["stop", "stop", "upstream", "upstream", "idle", "idle"]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_gzip_header_checksum() {
+        use std::io::Write;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(b"hello").unwrap();
+        let mut bytes = encoder.finish().unwrap();
+        bytes[3] |= 2;
+        let mut crc = flate2::Crc::new();
+        crc.update(&bytes[..10]);
+        bytes.splice(10..10, crc.sum().to_le_bytes()[..2].iter().copied());
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let function = format!(r#"async () => {{
+            const bytes = new Uint8Array({bytes:?});
+            const valid = await new Response(new Blob([bytes]).stream()
+                .pipeThrough(new DecompressionStream('gzip'))).text();
+            bytes[10] ^= 1;
+            const invalid = await new Response(new Blob([bytes]).stream()
+                .pipeThrough(new DecompressionStream('gzip'))).text().then(() => 'ok', e => e.name);
+            return [valid, invalid];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!(["hello", "TypeError"]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_child_realm() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let frame = crate::frame::FrameRealm::new(&mut rt, 1, 0, "http://example.com/child", "<html><body></body></html>").unwrap();
+        frame.execute_script(&mut rt, r#"
+            globalThis.decoded = 'pending';
+            new Response(new Blob([new Uint8Array([1,5,0,250,255,104,101,108,108,111])]).stream()
+                .pipeThrough(new DecompressionStream('deflate-raw'))).text()
+                .then(text => { globalThis.decoded = text; }, e => { globalThis.decoded = e.name; });
+        "#).unwrap();
+        rt.run_event_loop_bounded(100).await.unwrap();
+        assert_eq!(frame.evaluate(&mut rt, "decoded").unwrap(), serde_json::json!("hello"));
+        drop(frame);
+        assert_eq!(rt.evaluate("1 + 1").unwrap(), serde_json::json!(2.0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_buffer_validation_and_native_overlap() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let result = rt.call_function_on_for_cdp(r#"async () => {
+            const rejected = [];
+            const chunks = ['bytes', null, {}, {[Symbol.toStringTag]:'ArrayBuffer'}];
+            if (typeof SharedArrayBuffer === 'function') chunks.push(new Uint8Array(new SharedArrayBuffer(8)));
+            for (const chunk of chunks) {
+                const stream = new DecompressionStream('deflate-raw');
+                const reading = new Response(stream.readable).text().then(() => 'ok', e => e.name);
+                const writing = await stream.writable.getWriter().write(chunk).then(() => 'ok', e => e.name);
+                rejected.push(writing === 'TypeError' && await reading === 'TypeError');
+            }
+            const ops = Deno.core.ops;
+            const resource = ops.op_decompression_create('deflate-raw');
+            const buffer = new Uint8Array(65536);
+            buffer.set([1,5,0,250,255,104,101,108,108,111]);
+            const step = ops.op_decompression_step(resource, buffer.subarray(0,10), buffer, false);
+            ops.op_decompression_close(resource);
+            return [rejected.every(Boolean), step, new TextDecoder().decode(buffer.subarray(0,5))];
+        }"#, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!([true, [10,5,true], "hello"]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_issue16_strokes_transforms_and_real_text() {
+        let mut rt = setup_runtime("<canvas id=board width=400 height=200></canvas>");
+        let result = rt.evaluate(r#"(() => {
+            const ctx=document.getElementById('board').getContext('2d');
+            const pixel=(x,y)=>Array.from(ctx.getImageData(x,y,1,1).data);
+            ctx.strokeStyle='#ff0000';ctx.lineWidth=4;
+            ctx.beginPath();ctx.moveTo(10,20);ctx.lineTo(110,20);ctx.stroke();
+            ctx.save();ctx.setTransform(1,0,0,1,150,40);ctx.translate(10,0);ctx.scale(2,2);
+            ctx.fillStyle='#0000ff';ctx.fillRect(0,0,20,20);ctx.restore();
+            ctx.font='24px sans-serif';ctx.fillStyle='black';ctx.fillText('Hello 123',10,140);
+            let ink=0;
+            const bytes=ctx.getImageData(0,110,200,40).data;
+            for(let i=3;i<bytes.length;i+=4) if(bytes[i]) ink++;
+            return [pixel(60,20),pixel(159,40),pixel(160,40),pixel(199,79),pixel(200,80),ink>200,ctx.measureText('WWW').width>ctx.measureText('iii').width];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[255,0,0,255],[0,0,0,0],[0,0,255,255],[0,0,255,255],[0,0,0,0],true,true]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_path_coordinates_survive_transform_changes_and_repeated_paint() {
+        let mut rt=setup_runtime("<canvas id=c width=100 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');
+            const pixel=(x,y)=>Array.from(c.getImageData(x,y,1,1).data);
+            c.translate(10,10);c.scale(2,2);c.beginPath();c.rect(0,0,10,10);
+            const before=pixel(15,15);
+            c.resetTransform();c.fillStyle='red';c.fill();c.fillStyle='blue';c.fill();
+            c.lineWidth=2;c.strokeStyle='green';c.stroke();
+            const matrix=c.getTransform();
+            return [before,pixel(15,15),pixel(10,20),pixel(31,20),[matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f]];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[0,0,0,0],[0,0,255,255],[0,128,0,255],[0,0,0,0],[1,0,0,1,0,0]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_save_restore_preserves_styles_transform_dash_and_clip() {
+        let mut rt=setup_runtime("<canvas id=c width=100 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');
+            c.lineCap='round';c.lineJoin='bevel';c.textAlign='right';c.textBaseline='top';
+            c.setLineDash([2,3]);c.lineDashOffset=1;c.translate(5,6);
+            c.save();c.lineCap='square';c.lineJoin='miter';c.textAlign='left';c.textBaseline='bottom';
+            c.setLineDash([7]);c.lineDashOffset=4;c.scale(3,3);c.globalAlpha=.5;
+            c.beginPath();c.rect(0,0,1,1);c.clip();c.restore();
+            c.fillStyle='red';c.fillRect(0,0,10,10);
+            const m=c.getTransform();
+            return [c.lineCap,c.lineJoin,c.textAlign,c.textBaseline,c.getLineDash(),c.lineDashOffset,c.globalAlpha,[m.a,m.d,m.e,m.f],Array.from(c.getImageData(10,10,1,1).data)];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!(["round","bevel","right","top",[2,3],1,1,[1,1,5,6],[255,0,0,255]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_clips_intersect_and_readback_stays_straight_rgba() {
+        let mut rt=setup_runtime("<canvas id=c width=100 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');
+            const pixel=(x,y)=>Array.from(c.getImageData(x,y,1,1).data);
+            c.save();c.beginPath();c.rect(0,0,10,10);c.clip();
+            c.beginPath();c.rect(20,20,10,10);c.clip();
+            c.beginPath();c.rect(0,0,100,100);c.clip();
+            c.fillStyle='blue';c.fillRect(0,0,100,100);
+            const empty=pixel(5,5);c.restore();
+            c.globalAlpha=.5;c.fillStyle='red';c.fillRect(0,0,10,10);
+            const alpha=pixel(5,5);c.globalAlpha=1;c.clearRect(0,0,2,2);
+            return [empty,alpha,pixel(0,0)];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[0,0,0,0],[255,0,0,128],[0,0,0,0]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_text_uses_font_metrics_alignment_baseline_and_transform() {
+        let mut rt=setup_runtime("<canvas id=c width=200 height=200></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');c.font='20px sans-serif';
+            const a=c.measureText('AV').width, b=c.measureText('A').width+c.measureText('V').width;
+            c.textAlign='center';c.textBaseline='top';const m=c.measureText('Hello');
+            c.translate(100,10);c.rotate(Math.PI/2);c.fillText('Hello',30,0);
+            const data=c.getImageData(60,0,50,100).data;
+            let ink=0;for(let i=3;i<data.length;i+=4) if(data[i]) ink++;
+            return [a<b,m.actualBoundingBoxLeft>0,m.actualBoundingBoxRight>0,m.actualBoundingBoxAscent<=1,m.actualBoundingBoxDescent>10,ink>100];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([true,true,true,true,true,true]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_curves_fill_rules_dashes_and_resize() {
+        let mut rt=setup_runtime("<canvas id=c width=120 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const canvas=document.getElementById('c'),c=canvas.getContext('2d');
+            const pixel=(x,y)=>Array.from(c.getImageData(x,y,1,1).data);
+            c.beginPath();c.rect(0,0,50,50);c.rect(10,10,30,30);c.fill('evenodd');
+            const hole=pixel(20,20);c.beginPath();c.arc(80,25,15,0,Math.PI*2);c.fill();
+            const circle=pixel(80,25);c.beginPath();c.moveTo(5,75);c.bezierCurveTo(20,50,35,100,50,75);c.lineWidth=3;c.stroke();
+            c.beginPath();c.roundRect(60,60,40,30,5);c.stroke();
+            c.setLineDash([2,3,4]);const dash=c.getLineDash();c.scale(2,2);canvas.width=120;
+            const m=c.getTransform();
+            return [hole,circle,dash,c.getLineDash(),m.a,c.lineWidth,pixel(80,25)];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[0,0,0,0],[0,0,0,255],[2,3,4,2,3,4],[],1,1,[0,0,0,0]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_in_child_realm_keeps_its_own_backing_store() {
+        let mut rt=setup_runtime("<canvas id=c width=10 height=10></canvas>");
+        let frame=crate::frame::FrameRealm::new(&mut rt,1,0,"http://example.com/child","<canvas id=c width=80 height=40></canvas>").unwrap();
+        frame.execute_script(&mut rt,"const c=document.getElementById('c').getContext('2d');c.fillStyle='red';c.fillRect(0,0,10,10);c.font='20px sans-serif';c.fillText('Hi',20,30);").unwrap();
+        assert_eq!(frame.evaluate(&mut rt,"Array.from(c.getImageData(5,5,1,1).data)").unwrap(),serde_json::json!([255,0,0,255]));
+        assert_eq!(rt.evaluate("Array.from(document.getElementById('c').getContext('2d').getImageData(5,5,1,1).data)").unwrap(),serde_json::json!([0,0,0,0]));
     }
 
     #[test]

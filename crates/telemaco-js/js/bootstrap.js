@@ -7553,16 +7553,47 @@ function _decodeBodyWithCharset(bytes, headers) {
 if (typeof Response === 'undefined') {
   globalThis.Response = class Response {
     constructor(body, init = {}) {
-      this._bodyBytes = _bodyToUint8Array(body); this.status = init.status || 200; this.statusText = init.statusText || '';
+      this._bodyStream = body && typeof body.getReader === 'function' ? body : null;
+      this._bodyBytes = this._bodyStream ? null : _bodyToUint8Array(body);
+      this.bodyUsed = false;
+      this.status = init.status || 200; this.statusText = init.statusText || '';
       this.ok = this.status >= 200 && this.status < 300;
       this.headers = new Headers(init.headers);
       this.type = init.type || 'basic'; this.url = init.url || ''; this.redirected = !!init.redirected;
     }
-    async text() { return _decodeBodyWithCharset(this._bodyBytes, this.headers); }
+    async _consumeBytes() {
+      if (!this._bodyStream) return this._bodyBytes;
+      if (this.bodyUsed) throw new TypeError("Response body is already used");
+      this.bodyUsed = true;
+      const reader = this._bodyStream.getReader();
+      const chunks = [];
+      let length = 0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!(value instanceof Uint8Array)) throw new TypeError("Response stream must contain bytes");
+          chunks.push(value);
+          length += value.length;
+        }
+      } finally { reader.releaseLock(); }
+      const bytes = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+      return bytes;
+    }
+    async text() { return _decodeBodyWithCharset(await this._consumeBytes(), this.headers); }
     async json() { return JSON.parse(await this.text()); }
-    async arrayBuffer() { return _arrayBufferFromBytes(this._bodyBytes); }
-    async blob() { return new Blob([this._bodyBytes]); }
-    clone() { return new Response(this._bodyBytes, { status: this.status, statusText: this.statusText, headers: this.headers, type: this.type, url: this.url, redirected: this.redirected }); }
+    async arrayBuffer() { return _arrayBufferFromBytes(await this._consumeBytes()); }
+    async blob() { return new Blob([await this._consumeBytes()]); }
+    clone() {
+      let body = this._bodyBytes;
+      if (this._bodyStream) {
+        if (this.bodyUsed || this._bodyStream.locked) throw new TypeError("Response body is already used");
+        [this._bodyStream, body] = this._bodyStream.tee();
+      }
+      return new Response(body, { status: this.status, statusText: this.statusText, headers: this.headers, type: this.type, url: this.url, redirected: this.redirected });
+    }
     static error() { return new Response(null, { status: 0 }); }
     static redirect(url, status) { return new Response(null, { status: status || 302, headers: { Location: url } }); }
     static json(data, init) { return new Response(JSON.stringify(data), { ...init, headers: { 'content-type': 'application/json', ...(init?.headers || {}) } }); }
@@ -9957,6 +9988,18 @@ if (typeof Blob === "undefined") globalThis.Blob = class Blob {
   text() { return Promise.resolve(new TextDecoder().decode(this._bytes)); }
   arrayBuffer() { return Promise.resolve(_arrayBufferFromBytes(this._bytes)); }
   bytes() { return Promise.resolve(this._bytes.slice()); }
+  stream() {
+    const bytes = this._bytes;
+    let offset = 0;
+    return new ReadableStream({
+      pull(controller) {
+        if (offset === bytes.length) { controller.close(); return; }
+        const end = Math.min(offset + 65536, bytes.length);
+        controller.enqueue(bytes.slice(offset, end));
+        offset = end;
+      },
+    });
+  }
 };
 if (typeof File === "undefined") globalThis.File = class File extends Blob {
   constructor(parts, name, opts) {
@@ -12588,6 +12631,44 @@ class _Canvas2D {
     this._damageQueued = false;
     this._resizeFromCanvas();
   }
+  get globalAlpha() { return this._globalAlpha; }
+  set globalAlpha(value) { value=Number(value); if (Number.isFinite(value) && value>=0 && value<=1) this._globalAlpha=value; }
+  get lineWidth() { return this._lineWidth; }
+  set lineWidth(value) { value=Number(value); if (Number.isFinite(value) && value>0) this._lineWidth=value; }
+  get miterLimit() { return this._miterLimit; }
+  set miterLimit(value) { value=Number(value); if (Number.isFinite(value) && value>0) this._miterLimit=value; }
+  get font() { return this._font; }
+  set font(value) {
+    value=String(value);
+    if (/(?:^|\s)\d*\.?\d+(?:px|pt|em|rem)(?:\/\S+)?\s+\S/.test(value)) this._font=value;
+  }
+  _point(x,y) {
+    const [a,b,c,d,e,f]=this._matrix;
+    return [a*x+c*y+e,b*x+d*y+f];
+  }
+  _textSpec(text) {
+    const match=this.font.match(/(\d*\.?\d+)(px|pt|em|rem)(?:\/\S+)?\s+(.+)$/);
+    return {
+      text:String(text).replace(/[\t\n\f\r]/g,' '),
+      size:Number(match[1]) * (match[2]==='pt' ? 4/3 : match[2]==='em' || match[2]==='rem' ? 16 : 1),
+      family:match[3], bold:/(?:^|\s)(?:bold|bolder|[6-9]00)(?:\s|$)/.test(this.font),
+      italic:/(?:^|\s)(?:italic|oblique)(?:\s|$)/.test(this.font),
+      align:this.textAlign, baseline:this.textBaseline,
+      rtl:this.direction==='rtl' || this.direction==='inherit' && this.canvas.getAttribute('dir')==='rtl',
+    };
+  }
+  _native(shape, color=this.fillStyle) {
+    const draw=Deno.core.ops.op_canvas_draw;
+    if (typeof draw!=='function') return false;
+    draw(this.canvas._nid, {
+      shape, transform:this._matrix, color:String(color), alpha:this.globalAlpha,
+      composite:this.globalCompositeOperation, line_width:this.lineWidth,
+      line_cap:this.lineCap, line_join:this.lineJoin, miter_limit:this.miterLimit,
+      dash:this._dash, dash_offset:Number(this.lineDashOffset), clips:this._clips,
+    });
+    this._markPaintDamage();
+    return true;
+  }
   _canvasDimension(name, fallback) {
     const raw = this.canvas.getAttribute(name);
     if (raw === null || raw === '') return fallback;
@@ -12604,6 +12685,17 @@ class _Canvas2D {
     this.globalAlpha = 1;
     this.globalCompositeOperation = 'source-over';
     this._stateStack = [];
+    this._matrix = [1,0,0,1,0,0];
+    this._path = [];
+    this._clips = [];
+    this._dash = [];
+    this.lineCap = 'butt';
+    this.lineJoin = 'miter';
+    this.miterLimit = 10;
+    this.lineDashOffset = 0;
+    this.direction = 'inherit';
+    this._currentPoint = null;
+    this._subpathStart = null;
   }
   _resizeFromCanvas() {
     const requestedWidth = this._canvasDimension('width', 300);
@@ -12655,20 +12747,20 @@ class _Canvas2D {
     x = Math.round(x); y = Math.round(y);
     if (x < 0 || x >= this._w || y < 0 || y >= this._h) return;
     const idx = (y * this._w + x) * 4;
-    const alpha = (a / 255) * this.globalAlpha;
-    if (this.globalCompositeOperation === 'multiply') {
-      this._buf[idx+0] = Math.round((r/255) * (this._buf[idx+0]/255) * 255);
-      this._buf[idx+1] = Math.round((g/255) * (this._buf[idx+1]/255) * 255);
-      this._buf[idx+2] = Math.round((b/255) * (this._buf[idx+2]/255) * 255);
-      this._buf[idx+3] = Math.min(255, this._buf[idx+3] + Math.round(a * alpha));
-    } else {
-      this._buf[idx+0] = Math.round(r * alpha + this._buf[idx+0] * (1 - alpha));
-      this._buf[idx+1] = Math.round(g * alpha + this._buf[idx+1] * (1 - alpha));
-      this._buf[idx+2] = Math.round(b * alpha + this._buf[idx+2] * (1 - alpha));
-      this._buf[idx+3] = Math.min(255, Math.round(a * alpha + this._buf[idx+3] * (1 - alpha)));
+    const sa=(a/255)*this.globalAlpha,da=this._buf[idx+3]/255;
+    const out=sa+da*(1-sa);
+    for (let i=0;i<3;i++) {
+      const src=[r,g,b][i]/255,dst=this._buf[idx+i]/255;
+      const blend=this.globalCompositeOperation==='multiply' ? src*dst : src;
+      this._buf[idx+i]=out ? Math.round(((1-da)*sa*src+sa*da*blend+da*(1-sa)*dst)/out*255) : 0;
     }
+    this._buf[idx+3]=Math.round(out*255);
   }
+
   fillRect(x, y, w, h) {
+    [x,y,w,h]=[x,y,w,h].map(Number);
+    if (![x,y,w,h].every(Number.isFinite)) return;
+    if (this._native({op:'fill_rect',rect:[x,y,w,h]})) return;
     const [r,g,b,a] = this._parseColor(this.fillStyle);
     x=Math.round(x); y=Math.round(y); w=Math.round(w); h=Math.round(h);
     for (let py = Math.max(0,y); py < Math.min(this._h, y+h); py++) {
@@ -12679,6 +12771,9 @@ class _Canvas2D {
     this._markPaintDamage();
   }
   clearRect(x, y, w, h) {
+    [x,y,w,h]=[x,y,w,h].map(Number);
+    if (![x,y,w,h].every(Number.isFinite)) return;
+    if (this._native({op:'clear_rect',rect:[x,y,w,h]})) return;
     x=Math.round(x); y=Math.round(y); w=Math.round(w); h=Math.round(h);
     for (let py = Math.max(0,y); py < Math.min(this._h, y+h); py++) {
       for (let px = Math.max(0,x); px < Math.min(this._w, x+w); px++) {
@@ -12688,48 +12783,28 @@ class _Canvas2D {
     }
     this._markPaintDamage();
   }
-  strokeRect(x, y, w, h) {
-    const [r,g,b,a] = this._parseColor(this.strokeStyle);
-    const lw = this.lineWidth;
-    for (let px = Math.round(x); px < Math.round(x+w); px++) {
-      for (let l = 0; l < lw; l++) { this._setPixel(px, Math.round(y)+l, r,g,b,a); this._setPixel(px, Math.round(y+h)-1-l, r,g,b,a); }
+  strokeRect(x,y,w,h) {
+    const rect=[x,y,w,h].map(Number);
+    if (!rect.every(Number.isFinite)) return;
+    if (!this._native({op:'stroke_rect',rect},this.strokeStyle)) {
+      throw new DOMException('Canvas strokes require the render feature','NotSupportedError');
     }
-    for (let py = Math.round(y); py < Math.round(y+h); py++) {
-      for (let l = 0; l < lw; l++) { this._setPixel(Math.round(x)+l, py, r,g,b,a); this._setPixel(Math.round(x+w)-1-l, py, r,g,b,a); }
-    }
-    this._markPaintDamage();
   }
-  fillText(text, x, y) {
-    const [r,g,b,a] = this._parseColor(this.fillStyle);
-    const fontSize = parseInt(this.font) || 10;
-    const scale = Math.max(1, Math.round(fontSize / 10));
-    const str = String(text);
-    let cx = Math.round(x);
-    for (let i = 0; i < str.length; i++) {
-      const code = str.charCodeAt(i);
-      for (let row = 0; row < 7; row++) {
-        for (let col = 0; col < 5; col++) {
-          const on = ((_fpRand(code * 100 + row * 10 + col) > 0.45) &&
-                      (row > 0 && row < 6 && col > 0 && col < 4)) ||
-                     (_fpRand(code * 200 + row * 7 + col) > 0.7);
-          if (on) {
-            for (let sy = 0; sy < scale; sy++) {
-              for (let sx = 0; sx < scale; sx++) {
-                this._setPixel(cx + col*scale + sx, Math.round(y) - 7*scale + row*scale + sy, r, g, b, a);
-              }
-            }
-          }
-        }
-      }
-      cx += 6 * scale;
+  fillText(text,x,y,maxWidth) { this._drawText(text,x,y,maxWidth,false); }
+  strokeText(text,x,y,maxWidth) { this._drawText(text,x,y,maxWidth,true); }
+  _drawText(text,x,y,maxWidth,stroke) {
+    x=Number(x); y=Number(y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (maxWidth!==undefined && (!Number.isFinite(Number(maxWidth)) || Number(maxWidth)<=0)) return;
+    if (!this._native({op:'text',spec:this._textSpec(text),x,y,max_width:maxWidth===undefined ? null : Number(maxWidth),stroke},stroke ? this.strokeStyle : this.fillStyle)) {
+      throw new DOMException('Canvas text requires the render feature','NotSupportedError');
     }
-    this._markPaintDamage();
   }
-  strokeText(text, x, y) { this.fillText(text, x, y); }
-  measureText(t) {
-    const fontSize = parseInt(this.font) || 10;
-    const scale = Math.max(1, Math.round(fontSize / 10));
-    return { width: String(t).length * 6 * scale, actualBoundingBoxAscent: 7*scale, actualBoundingBoxDescent: 2*scale };
+  measureText(text) {
+    const measure=Deno.core.ops.op_canvas_measure_text;
+    if (typeof measure==='function') return measure(this._textSpec(text));
+    const size=parseFloat(this.font)||10;
+    return {width:String(text).length*size*0.6,actualBoundingBoxAscent:size*0.8,actualBoundingBoxDescent:size*0.2};
   }
   getImageData(x, y, w, h) {
     x=Math.round(x); y=Math.round(y); w=Math.round(w); h=Math.round(h);
@@ -12785,37 +12860,144 @@ class _Canvas2D {
     }
     this._markPaintDamage();
   }
-  beginPath() { this._path = []; }
-  closePath() {}
-  moveTo(x, y) { if (this._path) this._path.push({t:'M',x,y}); }
-  lineTo(x, y) { if (this._path) this._path.push({t:'L',x,y}); }
-  bezierCurveTo() {} quadraticCurveTo() {}
-  arc(x, y, r, s, e) { if (this._path) this._path.push({t:'A',x,y,r}); }
-  arcTo() {}
-  rect(x, y, w, h) { this.fillRect(x, y, w, h); }
-  fill() {
-    if (!this._path) return;
-    const [r,g,b,a] = this._parseColor(this.fillStyle);
-    for (const seg of this._path) {
-      if (seg.t === 'A') {
-        const cx = Math.round(seg.x), cy = Math.round(seg.y), rad = seg.r;
-        const r2 = rad * rad;
-        for (let py = Math.max(0, cy - rad); py <= Math.min(this._h - 1, cy + rad); py++) {
-          for (let px = Math.max(0, cx - rad); px <= Math.min(this._w - 1, cx + rad); px++) {
-            if ((px-cx)*(px-cx) + (py-cy)*(py-cy) <= r2) this._setPixel(px, py, r, g, b, a);
-          }
-        }
-      }
-    }
-    this._path = [];
-    this._markPaintDamage();
+  beginPath() { this._path=[]; this._currentPoint=null; this._subpathStart=null; }
+  _append(kind,coords) {
+    coords=coords.map(Number);
+    if (!coords.every(Number.isFinite)) return;
+    if (this._path.length>=16384) throw new RangeError('Canvas path exceeds the segment budget');
+    const points=[];
+    for (let i=0;i<coords.length;i+=2) points.push(...this._point(coords[i],coords[i+1]));
+    this._path.push([kind,...points]);
+    this._currentPoint=points.slice(-2);
+    if (kind===0) this._subpathStart=this._currentPoint;
   }
-  stroke() {}
-  clip() {}
-  save() { this._stateStack.push({fillStyle: this.fillStyle, strokeStyle: this.strokeStyle, globalAlpha: this.globalAlpha, font: this.font, lineWidth: this.lineWidth}); }
-  restore() { const s = this._stateStack.pop(); if (s) Object.assign(this, s); }
-  translate() {} rotate() {} scale() {}
-  setTransform() {} resetTransform() {} transform() {}
+  moveTo(x,y) { this._append(0,[x,y]); }
+  lineTo(x,y) { this._append(this._currentPoint ? 1 : 0,[x,y]); }
+  quadraticCurveTo(cx,cy,x,y) {
+    if (!this._currentPoint) this.moveTo(cx,cy);
+    this._append(2,[cx,cy,x,y]);
+  }
+  bezierCurveTo(x1,y1,x2,y2,x,y) {
+    if (!this._currentPoint) this.moveTo(x1,y1);
+    this._append(3,[x1,y1,x2,y2,x,y]);
+  }
+  closePath() {
+    if (!this._currentPoint) return;
+    this._path.push([4]);
+    this._currentPoint=this._subpathStart;
+  }
+  rect(x,y,w,h) {
+    [x,y,w,h]=[x,y,w,h].map(Number);
+    if (![x,y,w,h].every(Number.isFinite)) return;
+    this.moveTo(x,y); this.lineTo(x+w,y); this.lineTo(x+w,y+h); this.lineTo(x,y+h); this.closePath();
+  }
+  arc(x,y,r,start,end,ccw=false) { this.ellipse(x,y,r,r,0,start,end,ccw); }
+  ellipse(x,y,rx,ry,rotation,start,end,ccw=false) {
+    [x,y,rx,ry,rotation,start,end]=[x,y,rx,ry,rotation,start,end].map(Number);
+    if (![x,y,rx,ry,rotation,start,end].every(Number.isFinite)) return;
+    if (rx<0 || ry<0) throw new DOMException('Negative ellipse radius','IndexSizeError');
+    const tau=2*Math.PI;
+    let delta=end-start;
+    if (!ccw) delta=delta>=tau ? tau : ((delta%tau)+tau)%tau;
+    else delta=delta<=-tau ? -tau : -(((-delta%tau)+tau)%tau);
+    const cos=Math.cos(rotation),sin=Math.sin(rotation);
+    const point=(t)=>[x+rx*Math.cos(t)*cos-ry*Math.sin(t)*sin,y+rx*Math.cos(t)*sin+ry*Math.sin(t)*cos];
+    const tangent=(t)=>[-rx*Math.sin(t)*cos-ry*Math.cos(t)*sin,-rx*Math.sin(t)*sin+ry*Math.cos(t)*cos];
+    this.lineTo(...point(start));
+    const count=Math.ceil(Math.abs(delta)/(Math.PI/2));
+    for (let i=0;i<count;i++) {
+      const a=start+delta*i/count,b=start+delta*(i+1)/count,k=4/3*Math.tan((b-a)/4);
+      const p=point(a),q=point(b),u=tangent(a),v=tangent(b);
+      this.bezierCurveTo(p[0]+k*u[0],p[1]+k*u[1],q[0]-k*v[0],q[1]-k*v[1],q[0],q[1]);
+    }
+  }
+  arcTo(x1,y1,x2,y2,r) {
+    [x1,y1,x2,y2,r]=[x1,y1,x2,y2,r].map(Number);
+    if (![x1,y1,x2,y2,r].every(Number.isFinite)) return;
+    if (r<0) throw new DOMException('Negative arc radius','IndexSizeError');
+    if (!this._currentPoint) { this.moveTo(x1,y1); return; }
+    const [a,b,c,d,e,f]=this._matrix,det=a*d-b*c;
+    if (!det) return;
+    const [px,py]=this._currentPoint;
+    const x0=(d*(px-e)-c*(py-f))/det,y0=(-b*(px-e)+a*(py-f))/det;
+    let ux=x0-x1,uy=y0-y1,vx=x2-x1,vy=y2-y1;
+    const lu=Math.hypot(ux,uy),lv=Math.hypot(vx,vy);
+    if (!lu || !lv || !r) { this.lineTo(x1,y1); return; }
+    ux/=lu;uy/=lu;vx/=lv;vy/=lv;
+    const angle=Math.acos(Math.max(-1,Math.min(1,ux*vx+uy*vy))),cross=ux*vy-uy*vx;
+    if (Math.abs(cross)<1e-12) { this.lineTo(x1,y1); return; }
+    const distance=r/Math.tan(angle/2),bisector=Math.hypot(ux+vx,uy+vy);
+    const cx=x1+(ux+vx)/bisector*r/Math.sin(angle/2),cy=y1+(uy+vy)/bisector*r/Math.sin(angle/2);
+    const tx=x1+ux*distance,ty=y1+uy*distance,ex=x1+vx*distance,ey=y1+vy*distance;
+    this.lineTo(tx,ty);this.arc(cx,cy,r,Math.atan2(ty-cy,tx-cx),Math.atan2(ey-cy,ex-cx),cross>0);
+  }
+  roundRect(x,y,w,h,radii=0) {
+    let rs=Array.isArray(radii) ? radii.map(Number) : [Number(radii)];
+    if (!rs.length || rs.length>4 || rs.some(r=>r<0)) throw new RangeError('Invalid corner radii');
+    if (![x,y,w,h,...rs].every(Number.isFinite)) return;
+    if (rs.length===1) rs=[rs[0],rs[0],rs[0],rs[0]];
+    else if (rs.length===2) rs=[...rs,...rs];
+    else if (rs.length===3) rs=[...rs,rs[1]];
+    if (w<0) { x+=w;w=-w;rs=[rs[1],rs[0],rs[3],rs[2]]; }
+    if (h<0) { y+=h;h=-h;rs=[rs[3],rs[2],rs[1],rs[0]]; }
+    const scale=Math.min(1,w/(rs[0]+rs[1]||1),w/(rs[2]+rs[3]||1),h/(rs[0]+rs[3]||1),h/(rs[1]+rs[2]||1));
+    rs=rs.map(r=>r*scale);
+    this.moveTo(x+rs[0],y);this.lineTo(x+w-rs[1],y);this.arc(x+w-rs[1],y+rs[1],rs[1],-Math.PI/2,0);
+    this.lineTo(x+w,y+h-rs[2]);this.arc(x+w-rs[2],y+h-rs[2],rs[2],0,Math.PI/2);
+    this.lineTo(x+rs[3],y+h);this.arc(x+rs[3],y+h-rs[3],rs[3],Math.PI/2,Math.PI);
+    this.lineTo(x,y+rs[0]);this.arc(x+rs[0],y+rs[0],rs[0],Math.PI,Math.PI*1.5);this.closePath();
+  }
+  fill(rule='nonzero') {
+    if (rule!=='nonzero' && rule!=='evenodd') throw new TypeError('Invalid fill rule');
+    if (!this._native({op:'fill',path:this._path,rule})) throw new DOMException('Canvas paths require rendering','NotSupportedError');
+  }
+  stroke() {
+    if (!this._native({op:'stroke',path:this._path},this.strokeStyle)) throw new DOMException('Canvas paths require rendering','NotSupportedError');
+  }
+  clip(rule='nonzero') {
+    if (rule!=='nonzero' && rule!=='evenodd') throw new TypeError('Invalid fill rule');
+    if (this._clips.length>=64) throw new RangeError('Canvas clip budget exceeded');
+    this._clips=[...this._clips,{path:this._path.slice(),rule}];
+  }
+  save() {
+    if (this._stateStack.length>=1024) throw new RangeError('Canvas state budget exceeded');
+    const state={};
+    for (const key of ['fillStyle','strokeStyle','globalAlpha','globalCompositeOperation','font','lineWidth','lineCap','lineJoin','miterLimit','lineDashOffset','textAlign','textBaseline','direction']) state[key]=this[key];
+    state._matrix=this._matrix.slice();state._clips=this._clips.slice();state._dash=this._dash.slice();
+    this._stateStack.push(state);
+  }
+  restore() { const state=this._stateStack.pop();if (state) Object.assign(this,state); }
+  transform(a,b,c,d,e,f) {
+    const n=[a,b,c,d,e,f].map(Number);
+    if (!n.every(Number.isFinite)) return;
+    [a,b,c,d,e,f]=n;
+    const [p,q,r,s,t,u]=this._matrix;
+    this._matrix=[p*a+r*b,q*a+s*b,p*c+r*d,q*c+s*d,p*e+r*f+t,q*e+s*f+u];
+  }
+  setTransform(...args) {
+    let values=args;
+    if (!args.length) values=[1,0,0,1,0,0];
+    else if (args.length===1 && typeof args[0]==='object' && args[0]!==null) {
+      const obj=args[0];
+      values=[['a','m11',1],['b','m12',0],['c','m21',0],['d','m22',1],['e','m41',0],['f','m42',0]].map(([short,long,fallback])=>{
+        if (obj[short]!==undefined && obj[long]!==undefined && Number(obj[short])!==Number(obj[long])) throw new TypeError('Conflicting matrix aliases');
+        return Number(obj[short]??obj[long]??fallback);
+      });
+    }
+    values=values.map(Number);
+    if (values.length!==6 || !values.every(Number.isFinite)) return;
+    this._matrix=values;
+  }
+  resetTransform() { this._matrix=[1,0,0,1,0,0]; }
+  getTransform() {
+    const matrix=new DOMMatrix();
+    [matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f]=this._matrix;
+    matrix.isIdentity=this._matrix.every((v,i)=>v===[1,0,0,1,0,0][i]);
+    return matrix;
+  }
+  translate(x,y) { this.transform(1,0,0,1,x,y); }
+  scale(x,y) { this.transform(x,0,0,y,0,0); }
+  rotate(angle) { angle=Number(angle);this.transform(Math.cos(angle),Math.sin(angle),-Math.sin(angle),Math.cos(angle),0,0); }
   createLinearGradient(x0,y0,x1,y1) { return { addColorStop(){}, _x0:x0,_y0:y0,_x1:x1,_y1:y1 }; }
   createRadialGradient() { return { addColorStop(){} }; }
   createPattern() { return {}; }
@@ -12824,10 +13006,12 @@ class _Canvas2D {
   // Line-dash plus a few path/style methods that charting libraries (Highcharts,
   // ECharts) call on every animation frame. A missing setLineDash threw
   // "is not a function" from a timer each tick, spamming errors (#258).
-  setLineDash() {}
-  getLineDash() { return []; }
-  ellipse() {}
-  roundRect() {}
+  setLineDash(value) {
+    const dash=Array.from(value,Number);
+    if (dash.some(v=>!Number.isFinite(v)||v<0)) return;
+    this._dash=dash.length%2 ? [...dash,...dash] : dash;
+  }
+  getLineDash() { return this._dash.slice(); }
   createConicGradient() { return { addColorStop(){} }; }
   getContextAttributes() { return { alpha: true, desynchronized: false, colorSpace: "srgb", willReadFrequently: false }; }
 }
@@ -13524,6 +13708,7 @@ if (typeof ReadableStream === 'undefined') {
           if (stream._state !== "readable") return;
           stream._state = "errored";
           stream._error = error;
+          stream._queue.length = 0;
           while (stream._reads.length) stream._reads.shift().reject(error);
         },
         get desiredSize() { return Math.max(0, 1 - stream._queue.length); },
@@ -13543,10 +13728,17 @@ if (typeof ReadableStream === 'undefined') {
       const stream = this;
       return {
         read() {
-          if (stream._queue.length > 0) return Promise.resolve({ value: stream._queue.shift(), done: false });
+          if (stream._queue.length > 0) {
+            const value = stream._queue.shift();
+            stream._pull();
+            return Promise.resolve({ value, done: false });
+          }
           if (stream._state === "closed") return Promise.resolve({ value: undefined, done: true });
           if (stream._state === "errored") return Promise.reject(stream._error);
-          return new Promise((resolve, reject) => stream._reads.push({resolve, reject}));
+          return new Promise((resolve, reject) => {
+            stream._reads.push({resolve, reject});
+            stream._pull();
+          });
         },
         releaseLock() { stream.locked = false; },
         cancel(reason) { return stream.cancel(reason); },
@@ -13564,8 +13756,22 @@ if (typeof ReadableStream === 'undefined') {
         },
       };
     }
+    _pull() {
+      if (this._state !== "readable") return;
+      if (this._pulling) { this._pullAgain = true; return; }
+      this._pulling = true;
+      try {
+        Promise.resolve(this._source.pull?.(this._controller))
+          .then(() => {
+            this._pulling = false;
+            if (this._pullAgain) { this._pullAgain = false; this._pull(); }
+          }, (error) => { this._pulling = false; this._controller.error(error); });
+      } catch (error) { this._pulling = false; this._controller.error(error); }
+    }
     cancel(reason) {
       this._queue.length = 0;
+      if (this._state === "closed") return Promise.resolve();
+      if (this._state === "errored") return Promise.reject(this._error);
       this._controller.close();
       try { return Promise.resolve(this._source.cancel?.(reason)); }
       catch (error) { return Promise.reject(error); }
@@ -13573,17 +13779,28 @@ if (typeof ReadableStream === 'undefined') {
     async pipeTo(destination) {
       const reader = this.getReader();
       const writer = destination.getWriter();
+      const signal = destination._abortController?.signal;
+      let aborted = false;
+      const abort = () => {
+        aborted = true;
+        reader.cancel(signal.reason).catch(() => {});
+      };
+      signal?.addEventListener('abort', abort);
       try {
+        if (signal?.aborted) abort();
         while (true) {
           const {value, done} = await reader.read();
+          if (aborted) throw signal.reason;
           if (done) break;
           await writer.write(value);
         }
         await writer.close();
       } catch (error) {
         try { await writer.abort(error); } catch {}
+        try { await reader.cancel(error); } catch {}
         throw error;
       } finally {
+        signal?.removeEventListener('abort', abort);
         reader.releaseLock();
         writer.releaseLock();
       }
@@ -13631,8 +13848,9 @@ if (typeof WritableStream === 'undefined') {
       this._error = null;
       this._chain = Promise.resolve();
       this.locked = false;
+      this._abortController = new AbortController();
       try {
-        const started = sink.start?.({});
+        const started = sink.start?.({signal: this._abortController.signal});
         if (started && typeof started.then === "function") this._chain = Promise.resolve(started);
       } catch (error) {
         this._state = "errored";
@@ -13659,7 +13877,9 @@ if (typeof WritableStream === 'undefined') {
         abort(reason) {
           stream._state = "errored";
           stream._error = reason;
-          stream._chain = stream._chain.then(() => stream._sink.abort?.(reason));
+          stream._abortController.abort(reason);
+          const abort = () => stream._sink.abort?.(reason);
+          stream._chain = stream._chain.then(abort, abort);
           return stream._chain;
         },
         releaseLock() { stream.locked = false; },
@@ -13693,6 +13913,113 @@ if (typeof TransformStream === 'undefined') {
       try { transformer.start?.(controller); }
       catch (error) { controller.error(error); }
     }
+  };
+}
+if (typeof DecompressionStream === 'undefined') {
+  const streams = new WeakMap();
+  const bufferLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength').get;
+  globalThis.DecompressionStream = class DecompressionStream {
+    constructor(format) {
+      format = String(format);
+      if (!["gzip", "deflate", "deflate-raw"].includes(format)) {
+        throw new TypeError("Unsupported compression format");
+      }
+      const ops = Deno.core.ops;
+      let resource = ops.op_decompression_create(format);
+      let controller, wake;
+      let ended = false;
+      let failed = false, failure;
+      const release = () => {
+        if (resource) ops.op_decompression_close(resource);
+        resource = null;
+      };
+      const fail = (reason) => {
+        if (failed) return;
+        failed = true;
+        failure = reason;
+        release();
+        controller.error(reason);
+        if (wake) { wake(); wake = null; }
+        writable._abortController.abort(reason);
+      };
+      const readable = new ReadableStream({
+        start(value) { controller = value; },
+        pull() { if (wake) { wake(); wake = null; } },
+        cancel(reason) { fail(reason); },
+      });
+      const decode = async (bytes, finish) => {
+        try {
+          let offset = 0;
+          while (true) {
+            if (failed) throw failure;
+            if (ended) {
+              if (offset !== bytes.length) throw new TypeError("Trailing compressed data");
+              return;
+            }
+            // One queued output block at most, even for highly compressed data.
+            while (controller.desiredSize === 0 && !failed) {
+              await new Promise((resolve) => { wake = resolve; });
+            }
+            if (failed) throw failure;
+            const output = new Uint8Array(65536);
+            const [consumed, written, done] = ops.op_decompression_step(
+              resource, bytes.subarray(offset, offset + 65536), output, finish);
+            offset += consumed;
+            if (written) controller.enqueue(output.subarray(0, written));
+            if (done) {
+              ended = true;
+              release();
+              if (offset !== bytes.length) throw new TypeError("Trailing compressed data");
+              return;
+            }
+            if (consumed === 0 && written === 0) {
+              if (finish) throw new TypeError("Truncated compressed data");
+              if (offset !== bytes.length) throw new TypeError("Invalid compressed data");
+              return;
+            }
+            if (!finish && offset === bytes.length && written < output.length) return;
+          }
+        } catch (error) {
+          fail(error);
+          throw error;
+        }
+      };
+      const writable = new WritableStream({
+        start(controller) {
+          controller.signal.addEventListener('abort', () => fail(controller.signal.reason));
+        },
+        async write(chunk) {
+          try {
+            let bytes;
+            if (ArrayBuffer.isView(chunk)) {
+              bufferLength.call(chunk.buffer);
+              bytes = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+            } else {
+              bufferLength.call(chunk);
+              bytes = new Uint8Array(chunk);
+            }
+            // Snapshot the input before waiting for a reader.
+            await decode(bytes.slice(), false);
+          } catch (error) { fail(error); throw error; }
+        },
+        async close() {
+          await decode(new Uint8Array(), true);
+          controller.close();
+          release();
+        },
+        abort(reason) { fail(reason); },
+      });
+      streams.set(this, { readable, writable });
+    }
+    get readable() {
+      if (!streams.has(this)) throw new TypeError("Illegal invocation");
+      return streams.get(this).readable;
+    }
+    get writable() {
+      if (!streams.has(this)) throw new TypeError("Illegal invocation");
+      return streams.get(this).writable;
+    }
+    get [Symbol.toStringTag]() { return "DecompressionStream"; }
   };
 }
 if (typeof TextEncoderStream === 'undefined') {

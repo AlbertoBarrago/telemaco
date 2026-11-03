@@ -1268,6 +1268,9 @@ impl Page {
                 for problem in realm.run_document_scripts(js, |url| sources.get(url).cloned()) {
                     tracing::debug!("frame {}: {}", frame.url, problem);
                 }
+                for problem in realm.run_document_modules(js, 5_000).await {
+                    tracing::debug!("frame {}: {}", frame.url, problem);
+                }
                 // The frame's scripts have run, so its document is loaded. Say
                 // so: everything a widget defers to DOMContentLoaded or load
                 // hangs on this, which is most of its interface.
@@ -5519,6 +5522,49 @@ mod tests {
             true,
         ));
         super::Page::new(name.to_string(), context)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn iframe_modules_deliver_messages_before_document_load() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut bytes = [0;4096];
+                    let read = socket.read(&mut bytes).await.unwrap();
+                    let request = String::from_utf8_lossy(&bytes[..read]);
+                    let (mime, body) = if request.starts_with("GET /child.html ") {
+                        ("text/html", r#"<script>window.classicRan = true;</script>
+                          <script type="module">const imported = await import('./entry.js');
+                            window.moduleRan = imported.value;
+                            parent.postMessage({classic: classicRan, module: moduleRan}, location.origin);
+                          </script>
+                          <script>addEventListener('load', () => parent.postMessage({loaded: moduleRan}, location.origin));</script>"#)
+                    } else if request.starts_with("GET /entry.js ") {
+                        ("application/javascript", "import { value } from './dep.js'; export { value };")
+                    } else if request.starts_with("GET /dep.js ") {
+                        ("application/javascript", "export const value = true;")
+                    } else {
+                        ("text/html", "<script>window.messages=[];addEventListener('message',e=>messages.push(e.data));</script><iframe src='/child.html'></iframe>")
+                    };
+                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                    socket.write_all(response.as_bytes()).await.unwrap();
+                });
+            }
+        });
+        let mut page = frame_page("iframe-modules");
+        page.navigate(&base).await.unwrap();
+        page.settle(500).await;
+        assert_eq!(page.js.as_mut().unwrap().evaluate("messages").unwrap(),
+            serde_json::json!([{ "classic":true,"module":true }, { "loaded":true }]));
+        assert_eq!(page.js.as_mut().unwrap().evaluate("typeof moduleRan").unwrap(),serde_json::json!("undefined"));
+        page.js.as_mut().unwrap().evaluate("document.querySelector('iframe').remove()").unwrap();
+        page.release_detached_frames();
+        assert!(page.frames.is_empty());
+        page.navigate("data:text/html,<body>next</body>").await.unwrap();
     }
 
     /// An iframe inside a shadow root is absent from

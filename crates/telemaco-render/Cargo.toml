@@ -23,6 +23,7 @@ default = []
 paint = ["dep:tiny-skia", "dep:ab_glyph", "dep:cosmic-text", "dep:swash", "dep:image", "dep:ureq", "dep:base64", "dep:resvg", "dep:usvg", "dep:url", "dep:wuff"]
 
 [dependencies]
+serde = { workspace = true }
 taffy = { workspace = true }
 telemaco-dom = { workspace = true }
 tiny-skia = { workspace = true, optional = true }

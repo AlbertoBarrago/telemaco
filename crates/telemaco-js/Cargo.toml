@@ -22,12 +22,14 @@ stealth = ["telemaco-net/stealth"]
 render = ["dep:telemaco-render", "telemaco-render/paint"]
 
 [build-dependencies]
-deno_core = "0.350"
+deno_core = { version = "=0.350.0", package = "telemaco-deno-core" }
 
 [dependencies]
 telemaco-dom = { workspace = true }
 telemaco-net = { workspace = true }
-deno_core = "0.350"
+# Fork of deno_core 0.350.0 adding per-context module realms (ModuleRealm),
+# used for iframe module graphs. Lib name is still `deno_core`.
+deno_core = { version = "=0.350.0", package = "telemaco-deno-core" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -43,6 +45,8 @@ reqwest = { workspace = true }
 html5ever = { workspace = true }
 deno_error = "0.6"
 base64 = { workspace = true }
+# Incremental gzip/zlib/raw DEFLATE, including wrapper checksum validation.
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 sha1 = "0.10"
 sha2 = "0.10"
 # WebCrypto (crypto.subtle) primitives. RustCrypto, pure Rust, no CMake/OpenSSL,

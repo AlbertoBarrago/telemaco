@@ -719,44 +719,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_core"
-version = "0.350.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e273b731fce500130790e777cb2631dc451db412975304d23816c1e444a10c5b"
-dependencies = [
- "anyhow",
- "az",
- "bincode",
- "bit-set",
- "bit-vec",
- "bytes",
- "capacity_builder",
- "cooked-waker",
- "deno_core_icudata",
- "deno_error",
- "deno_ops",
- "deno_path_util",
- "deno_unsync",
- "futures",
- "indexmap",
- "libc",
- "parking_lot",
- "percent-encoding",
- "pin-project",
- "serde",
- "serde_json",
- "serde_v8",
- "smallvec",
- "sourcemap",
- "static_assertions",
- "thiserror 2.0.18",
- "tokio",
- "url",
- "v8",
- "wasm_dep_analyzer",
-]
-
-[[package]]
 name = "deno_core_icudata"
 version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -957,6 +919,7 @@ checksum = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
+ "zlib-rs",
 ]
 
 [[package]]
@@ -3232,6 +3195,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "telemaco-deno-core"
+version = "0.350.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ee270b280e6ca56250b431535744c4e070bc9f23b72fbec8778c0826d7975fe"
+dependencies = [
+ "anyhow",
+ "az",
+ "bincode",
+ "bit-set",
+ "bit-vec",
+ "bytes",
+ "capacity_builder",
+ "cooked-waker",
+ "deno_core_icudata",
+ "deno_error",
+ "deno_ops",
+ "deno_path_util",
+ "deno_unsync",
+ "futures",
+ "indexmap",
+ "libc",
+ "parking_lot",
+ "percent-encoding",
+ "pin-project",
+ "serde",
+ "serde_json",
+ "serde_v8",
+ "smallvec",
+ "sourcemap",
+ "static_assertions",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
+ "v8",
+ "wasm_dep_analyzer",
+]
+
+[[package]]
 name = "telemaco-dom"
 version = "0.2.5"
 dependencies = [
@@ -3255,8 +3256,8 @@ dependencies = [
  "base64",
  "cbc",
  "ctr",
- "deno_core",
  "deno_error",
+ "flate2",
  "getrandom 0.2.17",
  "hkdf",
  "hmac",
@@ -3268,6 +3269,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "telemaco-deno-core",
  "telemaco-dom",
  "telemaco-net",
  "telemaco-render",
@@ -3340,6 +3342,7 @@ dependencies = [
  "log",
  "mentore",
  "resvg",
+ "serde",
  "swash",
  "telemaco-dom",
  "tiny-skia",
@@ -4801,6 +4804,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "zlib-rs"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b268e58e7c693d7c271f93ffc4ba3b380412554231c85bf61ca7af91042a4112"
 
 [[package]]
 name = "zmij"

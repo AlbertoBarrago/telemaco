@@ -33,6 +33,7 @@ use crate::runtime::TelemacoJsRuntime;
 /// the page's isolate.
 pub struct FrameRealm {
     context: deno_core::v8::Global<deno_core::v8::Context>,
+    modules: deno_core::ModuleRealm,
     /// Held so the frame's entry can be taken out again when the frame dies.
     realms: Rc<std::cell::RefCell<RealmStates>>,
     frame_id: u32,
@@ -64,8 +65,6 @@ impl FrameRealm {
         if !parent.share_ops_with_realm(&context) {
             return None;
         }
-        parent.share_context_state_with_realm(&context);
-        parent.copy_identity_to_realm(&context);
 
         // Only a same-origin frame is reachable from the page. Cross-origin
         // keeps its own security token, so V8 answers `undefined` for any
@@ -83,15 +82,19 @@ impl FrameRealm {
         state.frame_id = frame_id;
         parent.share_resources_with(&mut state);
 
+        let state = Rc::new(std::cell::RefCell::new(state));
+        let modules = parent.attach_frame_module_realm(context.clone(), &state);
+        parent.copy_identity_to_realm(&context);
         let realms = parent.realm_states();
         realms.borrow_mut().register(
             context.clone(),
             frame_id,
-            Rc::new(std::cell::RefCell::new(state)),
+            state,
         );
 
         let realm = FrameRealm {
             context,
+            modules,
             realms,
             frame_id,
             parent_frame_id,
@@ -247,8 +250,8 @@ impl FrameRealm {
     /// the page. One script throwing does not stop the ones after it, matching
     /// how a browser treats separate classic scripts.
     ///
-    /// Module scripts are skipped and reported: they need the frame's own module
-    /// loader, which is not wired up yet.
+    /// Modules are deferred until all parser-discovered classic scripts ran.
+    /// `run_document_modules` executes their graphs before document load events.
     ///
     /// Returns one message per script that failed or was skipped.
     pub fn run_document_scripts(
@@ -264,9 +267,6 @@ impl FrameRealm {
         let mut problems = Vec::new();
         for (index, script) in scripts.iter().enumerate() {
             if !script.is_classic() {
-                if script.type_attribute == "module" {
-                    problems.push(format!("frame module script {index} skipped: not supported"));
-                }
                 continue;
             }
 
@@ -287,6 +287,38 @@ impl FrameRealm {
             }
             if let Err(error) = self.execute_script(parent, &source) {
                 problems.push(format!("frame script {name} failed: {error}"));
+            }
+        }
+        problems
+    }
+
+    /// Executes deferred module roots in the frame's own cache and context.
+    /// One deadline covers all roots, and lifecycle events follow completion.
+    pub async fn run_document_modules(
+        &self,
+        parent: &mut TelemacoJsRuntime,
+        budget_ms: u64,
+    ) -> Vec<String> {
+        let scripts = match self.list_scripts(parent) {
+            Ok(scripts) => scripts,
+            Err(error) => return vec![error],
+        };
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(budget_ms);
+        let mut problems = Vec::new();
+        for script in scripts.into_iter().filter(|script| script.type_attribute == "module") {
+            let Some(remaining) = deadline.checked_duration_since(tokio::time::Instant::now()) else {
+                problems.push("Frame module budget exhausted".to_string());
+                break;
+            };
+            let (url, code) = if script.src.is_empty() {
+                (self.url.clone(), Some(script.text))
+            } else {
+                (self.resolve(&script.src), None)
+            };
+            if let Err(error) = parent.load_frame_module(
+                &self.modules, &url, code, remaining.as_millis().max(1) as u64,
+            ).await {
+                problems.push(format!("frame module {url} failed: {error}"));
             }
         }
         problems
@@ -378,11 +410,109 @@ mod tests {
     use std::cell::RefCell;
 
     fn page(url: &str, html: &str) -> TelemacoJsRuntime {
-        let mut runtime = TelemacoJsRuntime::new();
+        let mut runtime = TelemacoJsRuntime::with_base_url(url);
         runtime.set_dom(parse_html(html));
         runtime.set_url(url);
         runtime.run_page_init();
         runtime
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn frame_modules_await_in_their_own_realm_before_load() {
+        let mut parent = page("https://parent.example/", "<html><body></body></html>");
+        let html = r#"<script>window.classicRan = true;</script>
+            <script type="module">
+              const value = await new Promise(resolve => setTimeout(() => resolve(42), 5));
+              window.result = [value, window.classicRan, import.meta.url];
+            </script>
+            <script>window.addEventListener('load', () => window.loaded = window.result);</script>"#;
+        for id in 1..=2 {
+            let frame = FrameRealm::new(&mut parent, id, 0, "https://parent.example/child", html).unwrap();
+            assert!(frame.run_document_scripts(&mut parent, |_| None).is_empty());
+            assert!(frame.run_document_modules(&mut parent, 500).await.is_empty());
+            frame.dispatch_load_events(&mut parent).unwrap();
+            assert_eq!(frame.evaluate(&mut parent, "loaded").unwrap(),
+                serde_json::json!([42, true, "https://parent.example/child"]));
+        }
+        assert_eq!(parent.evaluate("typeof result").unwrap(), serde_json::json!("undefined"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn frame_module_removal_keeps_retained_functions_safe() {
+        let mut parent = page("https://parent.example/", "<html><body></body></html>");
+        let frame = FrameRealm::new(&mut parent, 1, 0, "https://parent.example/child",
+            "<script type=module>window.readMeta = () => import.meta.url;</script>").unwrap();
+        assert!(frame.run_document_modules(&mut parent, 500).await.is_empty());
+        parent.execute_script("retain", "globalThis.retained = __telemaco_frameObjects[1].window.readMeta;").unwrap();
+        drop(frame);
+        assert_eq!(parent.evaluate("retained()").unwrap(), serde_json::json!("https://parent.example/child"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn frame_modules_report_errors_and_recover_after_termination() {
+        let mut parent = page("https://parent.example/", "<html><body></body></html>");
+        let frame = FrameRealm::new(&mut parent, 1, 0, "https://child.example/frame",
+            "<script type=module>while(true){}</script>").unwrap();
+        let started = std::time::Instant::now();
+        assert!(!frame.run_document_modules(&mut parent, 50).await.is_empty());
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        drop(frame);
+        let frame = FrameRealm::new(&mut parent, 2, 0, "https://child.example/frame",
+            "<script type=module>try { window.blocked = parent.document === undefined; } catch (_) { window.blocked=true; }</script>").unwrap();
+        assert!(frame.run_document_modules(&mut parent, 500).await.is_empty());
+        assert_eq!(frame.evaluate(&mut parent, "blocked").unwrap(), serde_json::json!(true));
+        assert_eq!(parent.evaluate("1+1").unwrap().as_f64(), Some(2.0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn frame_modules_keep_network_graphs_and_caches_separate() {
+        std::env::set_var("TELEMACO_ALLOW_PRIVATE_NETWORK", "1");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let serving = tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut bytes = [0; 4096];
+                    let read = socket.read(&mut bytes).await.unwrap();
+                    let request = String::from_utf8_lossy(&bytes[..read]);
+                    let source = if request.starts_with("GET /nested/entry.js ") {
+                        "import { value } from './dep.js'; const lazy = await import('./lazy.js'); globalThis.result = [value, lazy.value, import.meta.url];"
+                    } else if request.starts_with("GET /nested/dep.js ") {
+                        "globalThis.runs = (globalThis.runs || 0) + 1; export const value = globalThis.runs;"
+                    } else if request.starts_with("GET /nested/lazy.js ") {
+                        "export const value = 7;"
+                    } else {
+                        std::future::pending::<()>().await;
+                        unreachable!()
+                    };
+                    let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/javascript\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{source}", source.len());
+                    socket.write_all(response.as_bytes()).await.unwrap();
+                });
+            }
+        });
+        let mut parent = page(&format!("{base}/index.html"), "<html><body></body></html>");
+        parent.set_http_client(std::sync::Arc::new(telemaco_net::TelemacoHttpClient::with_options(
+            std::sync::Arc::new(telemaco_net::CookieJar::new()),
+            None,
+        )));
+        parent.load_module(&format!("{base}/nested/dep.js"), 500).await.unwrap();
+        for id in 1..=2 {
+            let frame = FrameRealm::new(&mut parent, id, 0, &format!("{base}/nested/child.html"),
+                "<script type=module src='./entry.js'></script>").unwrap();
+            let errors = frame.run_document_modules(&mut parent, 1_000).await;
+            assert!(errors.is_empty(), "{errors:?}");
+            assert_eq!(frame.evaluate(&mut parent, "result").unwrap(),
+                serde_json::json!([1,7,format!("{base}/nested/entry.js")]));
+        }
+        assert_eq!(parent.evaluate("runs").unwrap().as_f64(), Some(1.0));
+
+        let frame = FrameRealm::new(&mut parent, 3, 0, &format!("{base}/nested/child.html"), "").unwrap();
+        frame.execute_script(&mut parent, "import('./never.js').catch(() => {});").unwrap();
+        let _ = parent.run_event_loop_bounded(20).await;
+        drop(frame);
+        parent.run_event_loop_bounded(100).await.unwrap();
+        serving.abort();
     }
 
     #[test]
@@ -606,8 +736,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn one_bad_frame_script_does_not_stop_the_rest() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn one_bad_frame_script_does_not_stop_the_rest() {
         let mut parent = page("https://parent.example/", "<html><body></body></html>");
         let frame = FrameRealm::new(
             &mut parent,
@@ -630,13 +760,14 @@ mod tests {
             frame.evaluate(&mut parent, "window.log.join(',')").unwrap(),
             serde_json::json!("a,b")
         );
-        assert_eq!(problems.len(), 3, "problems: {problems:?}");
+        assert_eq!(problems.len(), 2, "problems: {problems:?}");
         assert!(problems.iter().any(|p| p.contains("boom")), "{problems:?}");
         assert!(
             problems.iter().any(|p| p.contains("missing.js")),
             "{problems:?}"
         );
-        assert!(problems.iter().any(|p| p.contains("module")), "{problems:?}");
+        assert!(frame.run_document_modules(&mut parent, 500).await.is_empty());
+        assert_eq!(frame.evaluate(&mut parent, "window.log.join(',')").unwrap(), serde_json::json!("a,b,module"));
     }
 
     #[test]
