@@ -886,6 +886,7 @@ impl TelemacoJsRuntime {
             gs.stylesheet_cache = telemaco_render::StylesheetCache::default();
             gs.dynamic_fonts.clear();
             gs.canvas_surfaces.clear();
+            gs.canvas_text_engine = None;
             gs.scroll_offset = (0.0, 0.0);
             gs.element_scroll_offsets.clear();
             gs.scroll_generation = 0;
@@ -3686,6 +3687,124 @@ mod tests {
             return [rejected.every(Boolean), step, new TextDecoder().decode(buffer.subarray(0,5))];
         }"#, None, &[], true, true).await.unwrap();
         assert_eq!(result.value.unwrap(), serde_json::json!([true, [10,5,true], "hello"]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_issue16_strokes_transforms_and_real_text() {
+        let mut rt = setup_runtime("<canvas id=board width=400 height=200></canvas>");
+        let result = rt.evaluate(r#"(() => {
+            const ctx=document.getElementById('board').getContext('2d');
+            const pixel=(x,y)=>Array.from(ctx.getImageData(x,y,1,1).data);
+            ctx.strokeStyle='#ff0000';ctx.lineWidth=4;
+            ctx.beginPath();ctx.moveTo(10,20);ctx.lineTo(110,20);ctx.stroke();
+            ctx.save();ctx.setTransform(1,0,0,1,150,40);ctx.translate(10,0);ctx.scale(2,2);
+            ctx.fillStyle='#0000ff';ctx.fillRect(0,0,20,20);ctx.restore();
+            ctx.font='24px sans-serif';ctx.fillStyle='black';ctx.fillText('Hello 123',10,140);
+            let ink=0;
+            const bytes=ctx.getImageData(0,110,200,40).data;
+            for(let i=3;i<bytes.length;i+=4) if(bytes[i]) ink++;
+            return [pixel(60,20),pixel(159,40),pixel(160,40),pixel(199,79),pixel(200,80),ink>200,ctx.measureText('WWW').width>ctx.measureText('iii').width];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[255,0,0,255],[0,0,0,0],[0,0,255,255],[0,0,255,255],[0,0,0,0],true,true]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_path_coordinates_survive_transform_changes_and_repeated_paint() {
+        let mut rt=setup_runtime("<canvas id=c width=100 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');
+            const pixel=(x,y)=>Array.from(c.getImageData(x,y,1,1).data);
+            c.translate(10,10);c.scale(2,2);c.beginPath();c.rect(0,0,10,10);
+            const before=pixel(15,15);
+            c.resetTransform();c.fillStyle='red';c.fill();c.fillStyle='blue';c.fill();
+            c.lineWidth=2;c.strokeStyle='green';c.stroke();
+            const matrix=c.getTransform();
+            return [before,pixel(15,15),pixel(10,20),pixel(31,20),[matrix.a,matrix.b,matrix.c,matrix.d,matrix.e,matrix.f]];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[0,0,0,0],[0,0,255,255],[0,128,0,255],[0,0,0,0],[1,0,0,1,0,0]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_save_restore_preserves_styles_transform_dash_and_clip() {
+        let mut rt=setup_runtime("<canvas id=c width=100 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');
+            c.lineCap='round';c.lineJoin='bevel';c.textAlign='right';c.textBaseline='top';
+            c.setLineDash([2,3]);c.lineDashOffset=1;c.translate(5,6);
+            c.save();c.lineCap='square';c.lineJoin='miter';c.textAlign='left';c.textBaseline='bottom';
+            c.setLineDash([7]);c.lineDashOffset=4;c.scale(3,3);c.globalAlpha=.5;
+            c.beginPath();c.rect(0,0,1,1);c.clip();c.restore();
+            c.fillStyle='red';c.fillRect(0,0,10,10);
+            const m=c.getTransform();
+            return [c.lineCap,c.lineJoin,c.textAlign,c.textBaseline,c.getLineDash(),c.lineDashOffset,c.globalAlpha,[m.a,m.d,m.e,m.f],Array.from(c.getImageData(10,10,1,1).data)];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!(["round","bevel","right","top",[2,3],1,1,[1,1,5,6],[255,0,0,255]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_clips_intersect_and_readback_stays_straight_rgba() {
+        let mut rt=setup_runtime("<canvas id=c width=100 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');
+            const pixel=(x,y)=>Array.from(c.getImageData(x,y,1,1).data);
+            c.save();c.beginPath();c.rect(0,0,10,10);c.clip();
+            c.beginPath();c.rect(20,20,10,10);c.clip();
+            c.beginPath();c.rect(0,0,100,100);c.clip();
+            c.fillStyle='blue';c.fillRect(0,0,100,100);
+            const empty=pixel(5,5);c.restore();
+            c.globalAlpha=.5;c.fillStyle='red';c.fillRect(0,0,10,10);
+            const alpha=pixel(5,5);c.globalAlpha=1;c.clearRect(0,0,2,2);
+            return [empty,alpha,pixel(0,0)];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[0,0,0,0],[255,0,0,128],[0,0,0,0]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_text_uses_font_metrics_alignment_baseline_and_transform() {
+        let mut rt=setup_runtime("<canvas id=c width=200 height=200></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const c=document.getElementById('c').getContext('2d');c.font='20px sans-serif';
+            const a=c.measureText('AV').width, b=c.measureText('A').width+c.measureText('V').width;
+            c.textAlign='center';c.textBaseline='top';const m=c.measureText('Hello');
+            c.translate(100,10);c.rotate(Math.PI/2);c.fillText('Hello',30,0);
+            const data=c.getImageData(60,0,50,100).data;
+            let ink=0;for(let i=3;i<data.length;i+=4) if(data[i]) ink++;
+            return [a<b,m.actualBoundingBoxLeft>0,m.actualBoundingBoxRight>0,m.actualBoundingBoxAscent<=1,m.actualBoundingBoxDescent>10,ink>100];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([true,true,true,true,true,true]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_curves_fill_rules_dashes_and_resize() {
+        let mut rt=setup_runtime("<canvas id=c width=120 height=100></canvas>");
+        let result=rt.evaluate(r#"(() => {
+            const canvas=document.getElementById('c'),c=canvas.getContext('2d');
+            const pixel=(x,y)=>Array.from(c.getImageData(x,y,1,1).data);
+            c.beginPath();c.rect(0,0,50,50);c.rect(10,10,30,30);c.fill('evenodd');
+            const hole=pixel(20,20);c.beginPath();c.arc(80,25,15,0,Math.PI*2);c.fill();
+            const circle=pixel(80,25);c.beginPath();c.moveTo(5,75);c.bezierCurveTo(20,50,35,100,50,75);c.lineWidth=3;c.stroke();
+            c.beginPath();c.roundRect(60,60,40,30,5);c.stroke();
+            c.setLineDash([2,3,4]);const dash=c.getLineDash();c.scale(2,2);canvas.width=120;
+            const m=c.getTransform();
+            return [hole,circle,dash,c.getLineDash(),m.a,c.lineWidth,pixel(80,25)];
+        })()"#).unwrap();
+        assert_eq!(result,serde_json::json!([[0,0,0,0],[0,0,0,255],[2,3,4,2,3,4],[],1,1,[0,0,0,0]]));
+    }
+
+    #[cfg(feature = "render")]
+    #[test]
+    fn canvas_in_child_realm_keeps_its_own_backing_store() {
+        let mut rt=setup_runtime("<canvas id=c width=10 height=10></canvas>");
+        let frame=crate::frame::FrameRealm::new(&mut rt,1,0,"http://example.com/child","<canvas id=c width=80 height=40></canvas>").unwrap();
+        frame.execute_script(&mut rt,"const c=document.getElementById('c').getContext('2d');c.fillStyle='red';c.fillRect(0,0,10,10);c.font='20px sans-serif';c.fillText('Hi',20,30);").unwrap();
+        assert_eq!(frame.evaluate(&mut rt,"Array.from(c.getImageData(5,5,1,1).data)").unwrap(),serde_json::json!([255,0,0,255]));
+        assert_eq!(rt.evaluate("Array.from(document.getElementById('c').getContext('2d').getImageData(5,5,1,1).data)").unwrap(),serde_json::json!([0,0,0,0]));
     }
 
     #[test]

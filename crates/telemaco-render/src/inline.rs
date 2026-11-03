@@ -972,6 +972,68 @@ impl Default for TextEngine {
 }
 
 impl TextEngine {
+    /// Shape a single Canvas text run and retain its real glyph outlines.
+    /// Paths stay in baseline coordinates so Canvas can apply its full affine
+    /// transform without resampling an already-rasterized text bitmap.
+    pub(crate) fn canvas_text_outline(
+        &mut self, text: &str, size: f32, family: &str, bold: bool, italic: bool,
+    ) -> (f32, f32, f32, Option<tiny_skia::Path>) {
+        use ab_glyph::{Font, FontRef, GlyphId, OutlineCurve};
+        let family = resolve_font_family(Some(family));
+        let mut buffer = Buffer::new(&mut self.font_system, Metrics::new(size,size*1.2));
+        buffer.set_size(&mut self.font_system,None,None);
+        buffer.set_wrap(&mut self.font_system,Wrap::None);
+        let attrs = Attrs::new().family(Family::Name(family))
+            .weight(if bold { Weight::BOLD } else { Weight::NORMAL })
+            .style(if italic { Style::Italic } else { Style::Normal });
+        buffer.set_text(&mut self.font_system,text,&attrs,Shaping::Advanced);
+        buffer.shape_until_scroll(&mut self.font_system,false);
+        let mut builder = tiny_skia::PathBuilder::new();
+        let mut width = 0.0f32;
+        let mut ascent = size*0.8;
+        let mut descent = size*0.2;
+        for run in buffer.layout_runs() {
+            width = width.max(run.line_w);
+            for glyph in run.glyphs {
+                self.font_system.db().with_face_data(glyph.font_id, |bytes,index| {
+                    let Ok(font) = FontRef::try_from_slice_and_index(bytes,index) else { return };
+                    let scale = size/font.units_per_em().unwrap_or(1000.);
+                    ascent = font.ascent_unscaled()*scale;
+                    descent = -font.descent_unscaled()*scale;
+                    let Some(outline) = font.outline(GlyphId(glyph.glyph_id)) else { return };
+                    let ox = glyph.x + glyph.font_size*glyph.x_offset;
+                    let oy = glyph.y - glyph.font_size*glyph.y_offset;
+                    let point = |p: ab_glyph::Point| (ox+p.x*scale,oy-p.y*scale);
+                    let mut last = None;
+                    for curve in outline.curves {
+                        let start = match curve {
+                            OutlineCurve::Line(p,_) | OutlineCurve::Quad(p,_,_) | OutlineCurve::Cubic(p,_,_,_) => p,
+                        };
+                        if last != Some(start) {
+                            if last.is_some() { builder.close(); }
+                            let (x,y) = point(start); builder.move_to(x,y);
+                        }
+                        last = Some(match curve {
+                            OutlineCurve::Line(_,end) => {
+                                let (x,y)=point(end); builder.line_to(x,y); end
+                            }
+                            OutlineCurve::Quad(_,control,end) => {
+                                let (cx,cy)=point(control); let (x,y)=point(end);
+                                builder.quad_to(cx,cy,x,y); end
+                            }
+                            OutlineCurve::Cubic(_,c1,c2,end) => {
+                                let (x1,y1)=point(c1); let (x2,y2)=point(c2); let (x,y)=point(end);
+                                builder.cubic_to(x1,y1,x2,y2,x,y); end
+                            }
+                        });
+                    }
+                    if last.is_some() { builder.close(); }
+                });
+            }
+        }
+        (width,ascent,descent,builder.finish())
+    }
+
     pub fn new() -> Self {
         Self::new_with_fonts(&[])
     }

@@ -233,6 +233,8 @@ pub struct TelemacoState {
     #[cfg(feature = "render")]
     pub(crate) canvas_surfaces: HashMap<NodeId, CanvasBackingSurface>,
     #[cfg(feature = "render")]
+    pub(crate) canvas_text_engine: Option<Box<telemaco_render::inline::TextEngine>>,
+    #[cfg(feature = "render")]
     pub viewport: (f32, f32),
     /// Root scrolling offset in CSS pixels. With render enabled this is
     /// clamped against the cached document overflow and is the single source
@@ -355,6 +357,8 @@ impl TelemacoState {
             dynamic_fonts: Vec::new(),
             #[cfg(feature = "render")]
             canvas_surfaces: HashMap::new(),
+            #[cfg(feature = "render")]
+            canvas_text_engine: None,
             #[cfg(feature = "render")]
             viewport: (1280.0, 720.0),
             #[cfg(feature = "render")]
@@ -4573,6 +4577,7 @@ fn op_set_dynamic_fonts(state: &OpState, #[string] registrations: &str) -> bool 
 #[cfg(feature = "render")]
 #[op2]
 fn op_canvas_register_surface(
+    scope: &mut v8::HandleScope,
     state: &OpState,
     nid: u32,
     width: u32,
@@ -4596,7 +4601,7 @@ fn op_canvas_register_surface(
         return false;
     }
 
-    let shared = state.borrow::<SharedState>().clone();
+    let shared = realm_state(scope,state);
     let mut state = shared.borrow_mut();
     let node = NodeId::new(nid);
     let is_canvas = state
@@ -4631,13 +4636,48 @@ fn op_canvas_register_surface(
     true
 }
 
+#[cfg(feature = "render")]
+#[op2]
+fn op_canvas_draw(
+    scope: &mut v8::HandleScope,
+    state: &OpState,
+    nid: u32,
+    #[serde] draw: telemaco_render::canvas::CanvasDraw,
+) -> Result<(), deno_error::JsErrorBox> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let shared = realm_state(scope,state);
+        let mut shared = shared.borrow_mut();
+        let TelemacoState { canvas_surfaces, canvas_text_engine, .. } = &mut *shared;
+        let surface = canvas_surfaces.get_mut(&NodeId::new(nid))
+            .ok_or_else(|| deno_error::JsErrorBox::type_error("Canvas backing store is unavailable"))?;
+        telemaco_render::canvas::draw(&mut surface.pixels,surface.width,surface.height,canvas_text_engine,&draw)
+            .map_err(deno_error::JsErrorBox::range_error)
+    })).unwrap_or_else(|_| Err(deno_error::JsErrorBox::type_error("Canvas rasterization failed")))
+}
+
+#[cfg(feature = "render")]
+#[op2]
+#[serde]
+fn op_canvas_measure_text(
+    scope: &mut v8::HandleScope,
+    state: &OpState,
+    #[serde] text: telemaco_render::canvas::CanvasText,
+) -> Result<telemaco_render::canvas::TextMetrics, deno_error::JsErrorBox> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let shared = realm_state(scope,state);
+        let mut state = shared.borrow_mut();
+        telemaco_render::canvas::measure_text(&mut state.canvas_text_engine,&text)
+            .map_err(deno_error::JsErrorBox::range_error)
+    })).unwrap_or_else(|_| Err(deno_error::JsErrorBox::type_error("Canvas text shaping failed")))
+}
+
 /// Report one coalesced Canvas2D paint at the JavaScript task boundary. Pixel
 /// bytes are already live through the retained backing store, so damage wakes
 /// screencast/readiness without throwing away otherwise-valid layout.
 #[cfg(feature = "render")]
 #[op2(fast)]
-fn op_canvas_paint_damage(state: &OpState, nid: u32) -> bool {
-    let shared = state.borrow::<SharedState>().clone();
+fn op_canvas_paint_damage(scope: &mut v8::HandleScope, state: &OpState, nid: u32) -> bool {
+    let shared = realm_state(scope,state);
     let mut state = shared.borrow_mut();
     let node = NodeId::new(nid);
     if !state.canvas_surfaces.contains_key(&node) {
@@ -4767,6 +4807,8 @@ pub fn build_extension() -> Extension {
         ops.push(op_begin_render_task());
         ops.push(op_set_dynamic_fonts());
         ops.push(op_canvas_register_surface());
+        ops.push(op_canvas_draw());
+        ops.push(op_canvas_measure_text());
         ops.push(op_canvas_paint_damage());
         ops.push(op_image_metadata());
         ops.push(op_load_image_metadata());

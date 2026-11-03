@@ -3342,6 +3342,7 @@ dependencies = [
  "log",
  "mentore",
  "resvg",
+ "serde",
  "swash",
  "telemaco-dom",
  "tiny-skia",

@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Canvas paths, transforms and text</title>
+<style>
+  @font-face {
+    font-family: "Liberation Sans";
+    src: url("../crates/telemaco-render/assets/liberation-sans.ttf");
+  }
+  html, body { margin: 0; background: white; }
+  canvas { display: block; }
+</style>
+<canvas id="board" width="400" height="200"></canvas>
+<script>
+async function draw() {
+  try { await document.fonts.load('24px "Liberation Sans"'); } catch (_) {}
+  const ctx = document.getElementById('board').getContext('2d');
+  ctx.strokeStyle = '#ff0000';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(10, 20);
+  ctx.lineTo(110, 20);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 150, 40);
+  ctx.translate(10, 0);
+  ctx.scale(2, 2);
+  ctx.fillStyle = '#0000ff';
+  ctx.fillRect(0, 0, 20, 20);
+  ctx.restore();
+
+  ctx.fillStyle = '#000000';
+  ctx.font = '24px "Liberation Sans"';
+  ctx.fillText('Hello 123', 10, 140);
+  window.canvasReady = true;
+}
+draw();
+</script>
