@@ -719,44 +719,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno_core"
-version = "0.350.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e273b731fce500130790e777cb2631dc451db412975304d23816c1e444a10c5b"
-dependencies = [
- "anyhow",
- "az",
- "bincode",
- "bit-set",
- "bit-vec",
- "bytes",
- "capacity_builder",
- "cooked-waker",
- "deno_core_icudata",
- "deno_error",
- "deno_ops",
- "deno_path_util",
- "deno_unsync",
- "futures",
- "indexmap",
- "libc",
- "parking_lot",
- "percent-encoding",
- "pin-project",
- "serde",
- "serde_json",
- "serde_v8",
- "smallvec",
- "sourcemap",
- "static_assertions",
- "thiserror 2.0.18",
- "tokio",
- "url",
- "v8",
- "wasm_dep_analyzer",
-]
-
-[[package]]
 name = "deno_core_icudata"
 version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3233,6 +3195,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "telemaco-deno-core"
+version = "0.350.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ee270b280e6ca56250b431535744c4e070bc9f23b72fbec8778c0826d7975fe"
+dependencies = [
+ "anyhow",
+ "az",
+ "bincode",
+ "bit-set",
+ "bit-vec",
+ "bytes",
+ "capacity_builder",
+ "cooked-waker",
+ "deno_core_icudata",
+ "deno_error",
+ "deno_ops",
+ "deno_path_util",
+ "deno_unsync",
+ "futures",
+ "indexmap",
+ "libc",
+ "parking_lot",
+ "percent-encoding",
+ "pin-project",
+ "serde",
+ "serde_json",
+ "serde_v8",
+ "smallvec",
+ "sourcemap",
+ "static_assertions",
+ "thiserror 2.0.18",
+ "tokio",
+ "url",
+ "v8",
+ "wasm_dep_analyzer",
+]
+
+[[package]]
 name = "telemaco-dom"
 version = "0.2.5"
 dependencies = [
@@ -3256,7 +3256,6 @@ dependencies = [
  "base64",
  "cbc",
  "ctr",
- "deno_core",
  "deno_error",
  "flate2",
  "getrandom 0.2.17",
@@ -3270,6 +3269,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "telemaco-deno-core",
  "telemaco-dom",
  "telemaco-net",
  "telemaco-render",

@@ -417,57 +417,45 @@ impl TelemacoJsRuntime {
         Some(context)
     }
 
-    /// Copies deno_core's per-context bookkeeping from the main context onto a
-    /// realm we built ourselves.
-    ///
-    /// deno_core installs isolate-wide callbacks, and they resolve their state
-    /// from whatever context happens to be current. `promise_reject_callback`
-    /// reads a `ContextState` pointer out of an embedder data slot with a
-    /// "valid and set during realm creation" safety comment: it assumes every
-    /// context in the isolate is one deno_core created. Ours is not. A promise
-    /// rejected with no handler inside a frame realm therefore made it read a
-    /// null slot and dereference it, segfaulting the process, which is what
-    /// real pages do constantly through third-party frames (reproduced on
-    /// cursor.com, EXC_BAD_ACCESS at 0xfffffffffffffff0, the refcount field of
-    /// a null `Rc`).
-    ///
-    /// Pointing the frame's slots at the main realm's state makes the callbacks
-    /// find what they expect. A rejection inside a frame is then reported
-    /// against the main realm, which is a reporting detail rather than a crash.
-    /// The main context owns the state and outlives every frame realm, since
-    /// the realms hang off this runtime.
-    pub(crate) fn share_context_state_with_realm(
+    pub(crate) fn attach_frame_module_realm(
         &mut self,
-        realm: &deno_core::v8::Global<deno_core::v8::Context>,
-    ) {
-        use deno_core::v8;
+        context: deno_core::v8::Global<deno_core::v8::Context>,
+        state: &crate::ops::SharedState,
+    ) -> deno_core::ModuleRealm {
+        let frame = state.borrow();
+        let loader = TelemacoModuleLoader::with_page_state(
+            &frame.url, None, state, frame.import_map.clone(),
+        );
+        self.runtime.attach_module_realm(context, Rc::new(loader))
+    }
 
-        // The slot indices deno_core reserves per context (`CONTEXT_STATE_SLOT_INDEX`
-        // and `MODULE_MAP_SLOT_INDEX` in its `runtime::jsrealm`). They are not
-        // exported, so they are named here and copied verbatim rather than
-        // guessed at: a wrong index would write over unrelated embedder data.
-        const DENO_CONTEXT_SLOTS: [i32; 2] = [0, 1];
-
-        let main = self.runtime.main_context();
-        let isolate = self.runtime.v8_isolate();
-        let scope = &mut v8::HandleScope::new(isolate);
-        let main_context = v8::Local::new(scope, main);
-        let realm_context = v8::Local::new(scope, realm);
-
-        for slot in DENO_CONTEXT_SLOTS {
-            // SAFETY: the pointer is read from a slot deno_core populated on the
-            // main context and written to the same slot index on another context
-            // of the same isolate. It is borrowed, not owned: the main context
-            // keeps the only strong reference, and the callbacks that read it
-            // clone the `Rc` themselves before using it.
-            unsafe {
-                let state = main_context.get_aligned_pointer_from_embedder_data(slot);
-                if state.is_null() {
-                    continue;
-                }
-                realm_context.set_aligned_pointer_in_embedder_data(slot, state);
+    pub(crate) async fn load_frame_module(
+        &mut self,
+        realm: &deno_core::ModuleRealm,
+        url: &str,
+        code: Option<String>,
+        budget_ms: u64,
+    ) -> Result<(), String> {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(budget_ms);
+        let specifier = deno_core::ModuleSpecifier::parse(url).map_err(|e| e.to_string())?;
+        let loaded = tokio::time::timeout_at(deadline,
+            realm.load(self.runtime.v8_isolate(), &specifier, code.map(Into::into)),
+        ).await.map_err(|_| "Frame module graph timed out".to_string())?
+            .map_err(|e| e.to_string())?;
+        let remaining = remaining_deadline_ms(deadline).ok_or("Frame module budget exhausted")?;
+        let watchdog = self.arm_watchdog(std::time::Duration::from_millis(remaining));
+        let outcome = match realm.evaluate(self.runtime.v8_isolate(), loaded) {
+            Ok(promise) => {
+                let evaluation = realm.resolve(self.runtime.v8_isolate(), promise);
+                tokio::time::timeout_at(deadline,
+                    self.runtime.with_event_loop_promise(evaluation, Default::default()),
+                ).await.map_err(|_| "Frame module evaluation timed out".to_string())
+                    .and_then(|result| result.map(|_| ()).map_err(|error| error.to_string()))
             }
-        }
+            Err(error) => Err(error.to_string()),
+        };
+        self.disarm_watchdog(watchdog);
+        self.finish_heap_checked(outcome)
     }
 
     /// Takes the ops object bootstrap handed out, and removes the handoff from
