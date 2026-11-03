@@ -7553,16 +7553,47 @@ function _decodeBodyWithCharset(bytes, headers) {
 if (typeof Response === 'undefined') {
   globalThis.Response = class Response {
     constructor(body, init = {}) {
-      this._bodyBytes = _bodyToUint8Array(body); this.status = init.status || 200; this.statusText = init.statusText || '';
+      this._bodyStream = body && typeof body.getReader === 'function' ? body : null;
+      this._bodyBytes = this._bodyStream ? null : _bodyToUint8Array(body);
+      this.bodyUsed = false;
+      this.status = init.status || 200; this.statusText = init.statusText || '';
       this.ok = this.status >= 200 && this.status < 300;
       this.headers = new Headers(init.headers);
       this.type = init.type || 'basic'; this.url = init.url || ''; this.redirected = !!init.redirected;
     }
-    async text() { return _decodeBodyWithCharset(this._bodyBytes, this.headers); }
+    async _consumeBytes() {
+      if (!this._bodyStream) return this._bodyBytes;
+      if (this.bodyUsed) throw new TypeError("Response body is already used");
+      this.bodyUsed = true;
+      const reader = this._bodyStream.getReader();
+      const chunks = [];
+      let length = 0;
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (!(value instanceof Uint8Array)) throw new TypeError("Response stream must contain bytes");
+          chunks.push(value);
+          length += value.length;
+        }
+      } finally { reader.releaseLock(); }
+      const bytes = new Uint8Array(length);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+      return bytes;
+    }
+    async text() { return _decodeBodyWithCharset(await this._consumeBytes(), this.headers); }
     async json() { return JSON.parse(await this.text()); }
-    async arrayBuffer() { return _arrayBufferFromBytes(this._bodyBytes); }
-    async blob() { return new Blob([this._bodyBytes]); }
-    clone() { return new Response(this._bodyBytes, { status: this.status, statusText: this.statusText, headers: this.headers, type: this.type, url: this.url, redirected: this.redirected }); }
+    async arrayBuffer() { return _arrayBufferFromBytes(await this._consumeBytes()); }
+    async blob() { return new Blob([await this._consumeBytes()]); }
+    clone() {
+      let body = this._bodyBytes;
+      if (this._bodyStream) {
+        if (this.bodyUsed || this._bodyStream.locked) throw new TypeError("Response body is already used");
+        [this._bodyStream, body] = this._bodyStream.tee();
+      }
+      return new Response(body, { status: this.status, statusText: this.statusText, headers: this.headers, type: this.type, url: this.url, redirected: this.redirected });
+    }
     static error() { return new Response(null, { status: 0 }); }
     static redirect(url, status) { return new Response(null, { status: status || 302, headers: { Location: url } }); }
     static json(data, init) { return new Response(JSON.stringify(data), { ...init, headers: { 'content-type': 'application/json', ...(init?.headers || {}) } }); }
@@ -9957,6 +9988,18 @@ if (typeof Blob === "undefined") globalThis.Blob = class Blob {
   text() { return Promise.resolve(new TextDecoder().decode(this._bytes)); }
   arrayBuffer() { return Promise.resolve(_arrayBufferFromBytes(this._bytes)); }
   bytes() { return Promise.resolve(this._bytes.slice()); }
+  stream() {
+    const bytes = this._bytes;
+    let offset = 0;
+    return new ReadableStream({
+      pull(controller) {
+        if (offset === bytes.length) { controller.close(); return; }
+        const end = Math.min(offset + 65536, bytes.length);
+        controller.enqueue(bytes.slice(offset, end));
+        offset = end;
+      },
+    });
+  }
 };
 if (typeof File === "undefined") globalThis.File = class File extends Blob {
   constructor(parts, name, opts) {
@@ -13524,6 +13567,7 @@ if (typeof ReadableStream === 'undefined') {
           if (stream._state !== "readable") return;
           stream._state = "errored";
           stream._error = error;
+          stream._queue.length = 0;
           while (stream._reads.length) stream._reads.shift().reject(error);
         },
         get desiredSize() { return Math.max(0, 1 - stream._queue.length); },
@@ -13543,10 +13587,17 @@ if (typeof ReadableStream === 'undefined') {
       const stream = this;
       return {
         read() {
-          if (stream._queue.length > 0) return Promise.resolve({ value: stream._queue.shift(), done: false });
+          if (stream._queue.length > 0) {
+            const value = stream._queue.shift();
+            stream._pull();
+            return Promise.resolve({ value, done: false });
+          }
           if (stream._state === "closed") return Promise.resolve({ value: undefined, done: true });
           if (stream._state === "errored") return Promise.reject(stream._error);
-          return new Promise((resolve, reject) => stream._reads.push({resolve, reject}));
+          return new Promise((resolve, reject) => {
+            stream._reads.push({resolve, reject});
+            stream._pull();
+          });
         },
         releaseLock() { stream.locked = false; },
         cancel(reason) { return stream.cancel(reason); },
@@ -13564,8 +13615,22 @@ if (typeof ReadableStream === 'undefined') {
         },
       };
     }
+    _pull() {
+      if (this._state !== "readable") return;
+      if (this._pulling) { this._pullAgain = true; return; }
+      this._pulling = true;
+      try {
+        Promise.resolve(this._source.pull?.(this._controller))
+          .then(() => {
+            this._pulling = false;
+            if (this._pullAgain) { this._pullAgain = false; this._pull(); }
+          }, (error) => { this._pulling = false; this._controller.error(error); });
+      } catch (error) { this._pulling = false; this._controller.error(error); }
+    }
     cancel(reason) {
       this._queue.length = 0;
+      if (this._state === "closed") return Promise.resolve();
+      if (this._state === "errored") return Promise.reject(this._error);
       this._controller.close();
       try { return Promise.resolve(this._source.cancel?.(reason)); }
       catch (error) { return Promise.reject(error); }
@@ -13573,17 +13638,28 @@ if (typeof ReadableStream === 'undefined') {
     async pipeTo(destination) {
       const reader = this.getReader();
       const writer = destination.getWriter();
+      const signal = destination._abortController?.signal;
+      let aborted = false;
+      const abort = () => {
+        aborted = true;
+        reader.cancel(signal.reason).catch(() => {});
+      };
+      signal?.addEventListener('abort', abort);
       try {
+        if (signal?.aborted) abort();
         while (true) {
           const {value, done} = await reader.read();
+          if (aborted) throw signal.reason;
           if (done) break;
           await writer.write(value);
         }
         await writer.close();
       } catch (error) {
         try { await writer.abort(error); } catch {}
+        try { await reader.cancel(error); } catch {}
         throw error;
       } finally {
+        signal?.removeEventListener('abort', abort);
         reader.releaseLock();
         writer.releaseLock();
       }
@@ -13631,8 +13707,9 @@ if (typeof WritableStream === 'undefined') {
       this._error = null;
       this._chain = Promise.resolve();
       this.locked = false;
+      this._abortController = new AbortController();
       try {
-        const started = sink.start?.({});
+        const started = sink.start?.({signal: this._abortController.signal});
         if (started && typeof started.then === "function") this._chain = Promise.resolve(started);
       } catch (error) {
         this._state = "errored";
@@ -13659,7 +13736,9 @@ if (typeof WritableStream === 'undefined') {
         abort(reason) {
           stream._state = "errored";
           stream._error = reason;
-          stream._chain = stream._chain.then(() => stream._sink.abort?.(reason));
+          stream._abortController.abort(reason);
+          const abort = () => stream._sink.abort?.(reason);
+          stream._chain = stream._chain.then(abort, abort);
           return stream._chain;
         },
         releaseLock() { stream.locked = false; },
@@ -13693,6 +13772,113 @@ if (typeof TransformStream === 'undefined') {
       try { transformer.start?.(controller); }
       catch (error) { controller.error(error); }
     }
+  };
+}
+if (typeof DecompressionStream === 'undefined') {
+  const streams = new WeakMap();
+  const bufferLength = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength').get;
+  globalThis.DecompressionStream = class DecompressionStream {
+    constructor(format) {
+      format = String(format);
+      if (!["gzip", "deflate", "deflate-raw"].includes(format)) {
+        throw new TypeError("Unsupported compression format");
+      }
+      const ops = Deno.core.ops;
+      let resource = ops.op_decompression_create(format);
+      let controller, wake;
+      let ended = false;
+      let failed = false, failure;
+      const release = () => {
+        if (resource) ops.op_decompression_close(resource);
+        resource = null;
+      };
+      const fail = (reason) => {
+        if (failed) return;
+        failed = true;
+        failure = reason;
+        release();
+        controller.error(reason);
+        if (wake) { wake(); wake = null; }
+        writable._abortController.abort(reason);
+      };
+      const readable = new ReadableStream({
+        start(value) { controller = value; },
+        pull() { if (wake) { wake(); wake = null; } },
+        cancel(reason) { fail(reason); },
+      });
+      const decode = async (bytes, finish) => {
+        try {
+          let offset = 0;
+          while (true) {
+            if (failed) throw failure;
+            if (ended) {
+              if (offset !== bytes.length) throw new TypeError("Trailing compressed data");
+              return;
+            }
+            // One queued output block at most, even for highly compressed data.
+            while (controller.desiredSize === 0 && !failed) {
+              await new Promise((resolve) => { wake = resolve; });
+            }
+            if (failed) throw failure;
+            const output = new Uint8Array(65536);
+            const [consumed, written, done] = ops.op_decompression_step(
+              resource, bytes.subarray(offset, offset + 65536), output, finish);
+            offset += consumed;
+            if (written) controller.enqueue(output.subarray(0, written));
+            if (done) {
+              ended = true;
+              release();
+              if (offset !== bytes.length) throw new TypeError("Trailing compressed data");
+              return;
+            }
+            if (consumed === 0 && written === 0) {
+              if (finish) throw new TypeError("Truncated compressed data");
+              if (offset !== bytes.length) throw new TypeError("Invalid compressed data");
+              return;
+            }
+            if (!finish && offset === bytes.length && written < output.length) return;
+          }
+        } catch (error) {
+          fail(error);
+          throw error;
+        }
+      };
+      const writable = new WritableStream({
+        start(controller) {
+          controller.signal.addEventListener('abort', () => fail(controller.signal.reason));
+        },
+        async write(chunk) {
+          try {
+            let bytes;
+            if (ArrayBuffer.isView(chunk)) {
+              bufferLength.call(chunk.buffer);
+              bytes = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+            } else {
+              bufferLength.call(chunk);
+              bytes = new Uint8Array(chunk);
+            }
+            // Snapshot the input before waiting for a reader.
+            await decode(bytes.slice(), false);
+          } catch (error) { fail(error); throw error; }
+        },
+        async close() {
+          await decode(new Uint8Array(), true);
+          controller.close();
+          release();
+        },
+        abort(reason) { fail(reason); },
+      });
+      streams.set(this, { readable, writable });
+    }
+    get readable() {
+      if (!streams.has(this)) throw new TypeError("Illegal invocation");
+      return streams.get(this).readable;
+    }
+    get writable() {
+      if (!streams.has(this)) throw new TypeError("Illegal invocation");
+      return streams.get(this).writable;
+    }
+    get [Symbol.toStringTag]() { return "DecompressionStream"; }
   };
 }
 if (typeof TextEncoderStream === 'undefined') {

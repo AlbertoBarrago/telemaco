@@ -4653,6 +4653,70 @@ fn op_canvas_paint_damage(state: &OpState, nid: u32) -> bool {
     connected
 }
 
+// Owned by V8's GC rather than an id table: abandoning a stream or destroying
+// its realm must release the native window as well. No V8 references to trace.
+struct DecompressionResource(RefCell<Option<flate2::Decompress>>);
+
+impl deno_core::GarbageCollected for DecompressionResource {
+    fn get_name(&self) -> &'static std::ffi::CStr {
+        c"DecompressionStream"
+    }
+}
+
+#[op2]
+#[cppgc]
+fn op_decompression_create(#[string] format: &str) -> Result<DecompressionResource, deno_error::JsErrorBox> {
+    std::panic::catch_unwind(|| {
+        let decoder = match format {
+            "deflate-raw" => flate2::Decompress::new(false),
+            "deflate" => flate2::Decompress::new(true),
+            "gzip" => flate2::Decompress::new_gzip(15),
+            _ => return Err(deno_error::JsErrorBox::type_error("Unsupported compression format")),
+        };
+        Ok(DecompressionResource(RefCell::new(Some(decoder))))
+    }).unwrap_or_else(|_| Err(deno_error::JsErrorBox::type_error("Cannot create decompressor")))
+}
+
+#[op2]
+#[serde]
+fn op_decompression_step(
+    #[cppgc] resource: &DecompressionResource,
+    #[buffer] input: JsBuffer,
+    #[buffer] mut output: JsBuffer,
+    finish: bool,
+) -> Result<(usize, usize, bool), deno_error::JsErrorBox> {
+    // Every native call has bounded input and output, so a compressed payload
+    // cannot monopolize an op or allocate its entire expanded contents here.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if input.len() > 65_536 || output.len() != 65_536 {
+            return Err(deno_error::JsErrorBox::type_error("Invalid decompression buffer size"));
+        }
+        // Ops are callable directly by page JS too. Copy before mutably
+        // borrowing output, since the caller could supply overlapping views.
+        let input = input.to_vec();
+        let mut slot = resource.0.borrow_mut();
+        let decoder = slot.as_mut().ok_or_else(||
+            deno_error::JsErrorBox::type_error("Decompression stream is closed"))?;
+        let before_in = decoder.total_in();
+        let before_out = decoder.total_out();
+        let flush = if finish { flate2::FlushDecompress::Finish } else { flate2::FlushDecompress::None };
+        let status = decoder.decompress(&input, &mut output, flush)
+            .map_err(|_| deno_error::JsErrorBox::type_error("Invalid compressed data"))?;
+        let consumed = (decoder.total_in() - before_in) as usize;
+        let written = (decoder.total_out() - before_out) as usize;
+        Ok((consumed, written, status == flate2::Status::StreamEnd))
+    })).unwrap_or_else(|_| Err(deno_error::JsErrorBox::type_error("Decompression failed")));
+    if result.is_err() {
+        resource.0.borrow_mut().take();
+    }
+    result
+}
+
+#[op2(fast)]
+fn op_decompression_close(#[cppgc] resource: &DecompressionResource) {
+    resource.0.borrow_mut().take();
+}
+
 pub fn build_extension() -> Extension {
     // `mut` is load-bearing under the render feature, where the block below
     // pushes the rendering ops. A no-render build never reaches those pushes,
@@ -4692,6 +4756,9 @@ pub fn build_extension() -> Extension {
         op_encoding_for_label(),
         op_text_decode(),
         op_url_encode_query(),
+        op_decompression_create(),
+        op_decompression_step(),
+        op_decompression_close(),
     ];
     // Only registered when the render feature is compiled in. bootstrap.js
     // probes with typeof before calling, so the op's absence is a clean fallback.

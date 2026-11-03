@@ -3442,6 +3442,264 @@ mod tests {
         rt
     }
 
+    fn compressed_bytes(format: &str, input: &[u8]) -> Vec<u8> {
+        use std::io::Write;
+        match format {
+            "gzip" => {
+                let mut encoder = flate2::GzBuilder::new().filename("fixture").comment("stream")
+                    .write(Vec::new(), flate2::Compression::default());
+                encoder.write_all(input).unwrap();
+                encoder.finish().unwrap()
+            }
+            "deflate" => {
+                let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+                encoder.write_all(input).unwrap();
+                encoder.finish().unwrap()
+            }
+            "deflate-raw" => {
+                let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+                encoder.write_all(input).unwrap();
+                encoder.finish().unwrap()
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_formats_chunks_and_buffers() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        for format in ["deflate-raw", "deflate", "gzip"] {
+            let bytes = compressed_bytes(format, b"hello");
+            let function = format!(r#"async () => {{
+                const bytes = new Uint8Array({bytes:?});
+                const results = [];
+                for (const mode of ['blob', 'bytes', 'view', 'buffer']) {{
+                    const decoder = new DecompressionStream('{format}');
+                    if (mode === 'blob') {{
+                        results.push(await new Response(new Blob([bytes]).stream().pipeThrough(decoder)).text());
+                        continue;
+                    }}
+                    const reading = new Response(decoder.readable).text();
+                    const writer = decoder.writable.getWriter();
+                    await writer.write(new Uint8Array());
+                    for (const byte of bytes) {{
+                        const input = new Uint8Array([99, byte, 88]);
+                        await writer.write(mode === 'view' ? new DataView(input.buffer, 1, 1) :
+                            mode === 'buffer' ? new Uint8Array([byte]).buffer : input.subarray(1, 2));
+                    }}
+                    await writer.close();
+                    results.push(await reading);
+                }}
+                return results;
+            }}"#);
+            let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+            assert_eq!(result.value.unwrap(), serde_json::json!(["hello", "hello", "hello", "hello"]), "{format}");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_issue14_fixture() {
+        let mut rt = setup_runtime("<html><body><pre id=result>pending</pre></body></html>");
+        let result = rt.call_function_on_for_cdp(r#"async () => {
+            const compressed = new Uint8Array([1,5,0,250,255,104,101,108,108,111]);
+            const decoded = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+            document.getElementById('result').textContent = await new Response(decoded).text();
+            return document.getElementById('result').textContent;
+        }"#, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!("hello"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_invalid_truncated_and_trailing_data() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let mut cases = Vec::new();
+        for format in ["deflate-raw", "deflate", "gzip"] {
+            let valid = compressed_bytes(format, b"hello");
+            cases.push((format, Vec::new()));
+            cases.push((format, vec![255, 255, 255]));
+            cases.push((format, valid[..valid.len() - 1].to_vec()));
+            let mut trailing = valid.clone();
+            trailing.push(0);
+            cases.push((format, trailing));
+            if format != "deflate-raw" {
+                let mut corrupt = valid;
+                let index = corrupt.len() - if format == "gzip" { 8 } else { 1 };
+                corrupt[index] ^= 1;
+                cases.push((format, corrupt));
+            }
+            if format == "gzip" {
+                let mut members = compressed_bytes(format, b"hello");
+                members.extend(compressed_bytes(format, b"again"));
+                cases.push((format, members));
+            }
+        }
+        cases.push(("deflate", vec![0x78, 0x20, 0, 0, 0, 1])); // Unsupported preset dictionary.
+        let mut reserved = compressed_bytes("gzip", b"hello");
+        reserved[3] |= 0x20;
+        cases.push(("gzip", reserved));
+        for (format, bytes) in cases {
+            let function = format!(r#"async () => {{
+                const stream = new DecompressionStream('{format}');
+                const reading = new Response(stream.readable).text().then(() => 'ok', e => e.name);
+                const writer = stream.writable.getWriter();
+                let writing = 'ok';
+                try {{ await writer.write(new Uint8Array({bytes:?})); await writer.close(); }}
+                catch (e) {{ writing = e.name; }}
+                return [writing, await reading];
+            }}"#);
+            let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+            assert_eq!(result.value.unwrap(), serde_json::json!(["TypeError", "TypeError"]), "{format}: {bytes:?}");
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_large_output_backpressure_and_cancel() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let bytes = compressed_bytes("gzip", &vec![b'x'; 300_000]);
+        let function = format!(r#"async () => {{
+            const bytes = new Uint8Array({bytes:?});
+            const text = await new Response(new Blob([bytes]).stream()
+                .pipeThrough(new DecompressionStream('gzip'))).text();
+            const stream = new DecompressionStream('gzip');
+            const writer = stream.writable.getWriter();
+            let settled = false;
+            const writing = writer.write(bytes).then(() => {{ settled = true; return 'ok'; }}, e => e);
+            for (let i = 0; i < 10; i++) await Promise.resolve();
+            const blocked = !settled;
+            const reader = stream.readable.getReader();
+            const first = await reader.read();
+            await reader.cancel('stop');
+            const cancelled = await writing;
+            const after = await writer.write(bytes).then(() => 'ok', e => e);
+            return [text.length, /^x+$/.test(text), blocked, first.value.length, cancelled, after];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!([300000, true, true, 65536, "stop", "stop"]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_validation_empty_payload_and_abort() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let empty = compressed_bytes("deflate-raw", b"");
+        let function = format!(r#"async () => {{
+            const unsupported = [];
+            for (const format of ['br', 'GZIP', '', undefined, null]) {{
+                try {{ new DecompressionStream(format); unsupported.push('ok'); }}
+                catch (e) {{ unsupported.push(e.name); }}
+            }}
+            const empty = await new Response(new Blob([new Uint8Array({empty:?})]).stream()
+                .pipeThrough(new DecompressionStream('deflate-raw'))).text();
+            const stream = new DecompressionStream('deflate-raw');
+            const reading = new Response(stream.readable).text().then(() => 'ok', e => e);
+            await stream.writable.abort('abort');
+            const invalid = new DecompressionStream('deflate-raw');
+            const invalidRead = new Response(invalid.readable).text().then(() => 'ok', e => e.name);
+            const invalidWrite = await invalid.writable.getWriter().write('bad').then(() => 'ok', e => e.name);
+            return [unsupported, empty, await reading, invalidWrite, await invalidRead];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!([
+            ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError"], "", "abort", "TypeError", "TypeError"
+        ]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_pending_abort_and_upstream_cancellation() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let bytes = compressed_bytes("deflate", &vec![b'x'; 300_000]);
+        let function = format!(r#"async () => {{
+            const bytes = new Uint8Array({bytes:?});
+            const stream = new DecompressionStream('deflate');
+            const writer = stream.writable.getWriter();
+            const writing = writer.write(bytes).then(() => 'ok', e => e);
+            for (let i = 0; i < 10; i++) await Promise.resolve();
+            await writer.abort('stop');
+            const reading = await stream.readable.getReader().read().then(() => 'ok', e => e);
+            let cancelled;
+            const source = new ReadableStream({{
+                start(c) {{ c.enqueue(bytes); }},
+                cancel(reason) {{ cancelled = reason; }},
+            }});
+            const decoder = new DecompressionStream('deflate');
+            const piping = source.pipeTo(decoder.writable).then(() => 'ok', e => e);
+            const reader = decoder.readable.getReader();
+            await reader.read();
+            await reader.cancel('upstream');
+            let idleCancelled;
+            const idleSource = new ReadableStream({{ cancel(reason) {{ idleCancelled = reason; }} }});
+            const idleDecoder = new DecompressionStream('deflate');
+            const idlePiping = idleSource.pipeTo(idleDecoder.writable).then(() => 'ok', e => e);
+            await idleDecoder.readable.cancel('idle');
+            return [await writing, reading, await piping, cancelled, await idlePiping, idleCancelled];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!(["stop", "stop", "upstream", "upstream", "idle", "idle"]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_gzip_header_checksum() {
+        use std::io::Write;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(b"hello").unwrap();
+        let mut bytes = encoder.finish().unwrap();
+        bytes[3] |= 2;
+        let mut crc = flate2::Crc::new();
+        crc.update(&bytes[..10]);
+        bytes.splice(10..10, crc.sum().to_le_bytes()[..2].iter().copied());
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let function = format!(r#"async () => {{
+            const bytes = new Uint8Array({bytes:?});
+            const valid = await new Response(new Blob([bytes]).stream()
+                .pipeThrough(new DecompressionStream('gzip'))).text();
+            bytes[10] ^= 1;
+            const invalid = await new Response(new Blob([bytes]).stream()
+                .pipeThrough(new DecompressionStream('gzip'))).text().then(() => 'ok', e => e.name);
+            return [valid, invalid];
+        }}"#);
+        let result = rt.call_function_on_for_cdp(&function, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!(["hello", "TypeError"]));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_child_realm() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let frame = crate::frame::FrameRealm::new(&mut rt, 1, 0, "http://example.com/child", "<html><body></body></html>").unwrap();
+        frame.execute_script(&mut rt, r#"
+            globalThis.decoded = 'pending';
+            new Response(new Blob([new Uint8Array([1,5,0,250,255,104,101,108,108,111])]).stream()
+                .pipeThrough(new DecompressionStream('deflate-raw'))).text()
+                .then(text => { globalThis.decoded = text; }, e => { globalThis.decoded = e.name; });
+        "#).unwrap();
+        rt.run_event_loop_bounded(100).await.unwrap();
+        assert_eq!(frame.evaluate(&mut rt, "decoded").unwrap(), serde_json::json!("hello"));
+        drop(frame);
+        assert_eq!(rt.evaluate("1 + 1").unwrap(), serde_json::json!(2.0));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn decompression_stream_buffer_validation_and_native_overlap() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let result = rt.call_function_on_for_cdp(r#"async () => {
+            const rejected = [];
+            const chunks = ['bytes', null, {}, {[Symbol.toStringTag]:'ArrayBuffer'}];
+            if (typeof SharedArrayBuffer === 'function') chunks.push(new Uint8Array(new SharedArrayBuffer(8)));
+            for (const chunk of chunks) {
+                const stream = new DecompressionStream('deflate-raw');
+                const reading = new Response(stream.readable).text().then(() => 'ok', e => e.name);
+                const writing = await stream.writable.getWriter().write(chunk).then(() => 'ok', e => e.name);
+                rejected.push(writing === 'TypeError' && await reading === 'TypeError');
+            }
+            const ops = Deno.core.ops;
+            const resource = ops.op_decompression_create('deflate-raw');
+            const buffer = new Uint8Array(65536);
+            buffer.set([1,5,0,250,255,104,101,108,108,111]);
+            const step = ops.op_decompression_step(resource, buffer.subarray(0,10), buffer, false);
+            ops.op_decompression_close(resource);
+            return [rejected.every(Boolean), step, new TextDecoder().decode(buffer.subarray(0,5))];
+        }"#, None, &[], true, true).await.unwrap();
+        assert_eq!(result.value.unwrap(), serde_json::json!([true, [10,5,true], "hello"]));
+    }
+
     #[test]
     fn focus_and_blur_fire_browser_order_events() {
         let mut rt = setup_runtime(

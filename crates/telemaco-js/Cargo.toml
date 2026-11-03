@@ -43,6 +43,8 @@ reqwest = { workspace = true }
 html5ever = { workspace = true }
 deno_error = "0.6"
 base64 = { workspace = true }
+# Incremental gzip/zlib/raw DEFLATE, including wrapper checksum validation.
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
 sha1 = "0.10"
 sha2 = "0.10"
 # WebCrypto (crypto.subtle) primitives. RustCrypto, pure Rust, no CMake/OpenSSL,
