@@ -1647,7 +1647,7 @@ impl TelemacoJsRuntime {
 
     pub fn evaluate(&mut self, expression: &str) -> Result<serde_json::Value, String> {
         self.begin_javascript_task();
-        let wrapped = Self::wrap_expression(expression);
+        let wrapped = Self::wrap_expression(expression, true);
         let result = self
             .execute_runtime_script("<eval>", wrapped)
             .map_err(|e| format!("JS error: {}", e))?;
@@ -2948,23 +2948,50 @@ impl TelemacoJsRuntime {
         if timeout.is_zero() {
             return self.evaluate(expression);
         }
+        self.evaluate_bounded(expression, timeout, None)
+    }
+
+    /// Bound JavaScript execution and the UTF-8 result copied into Rust.
+    /// Native conversion work is size-limited, not preempted by the watchdog.
+    pub fn evaluate_with_result_limit(
+        &mut self,
+        expression: &str,
+        timeout: std::time::Duration,
+        max_result_bytes: usize,
+    ) -> Result<serde_json::Value, String> {
+        if timeout.is_zero() {
+            return Err("evaluation timeout must be greater than zero".to_string());
+        }
+        self.evaluate_bounded(expression, timeout, Some(max_result_bytes))
+    }
+
+    fn evaluate_bounded(
+        &mut self,
+        expression: &str,
+        timeout: std::time::Duration,
+        max_result_bytes: Option<usize>,
+    ) -> Result<serde_json::Value, String> {
         self.begin_javascript_task();
-        let wrapped = Self::wrap_expression(expression);
+        let wrapped = Self::wrap_expression(expression, false);
         let token = self.arm_watchdog(timeout);
-        let result = self.runtime.execute_script("<eval>", wrapped);
+        // JSON conversion can execute page getters, proxies and toJSON, so it
+        // belongs to the same watchdog budget as the expression itself.
+        let result = self.runtime.execute_script("<eval>", wrapped)
+            .map_err(|error| format!("JS error: {error}"))
+            .and_then(|value| self.v8_to_json_with_limit(value, max_result_bytes));
         let fired = self.disarm_watchdog(token);
         if self.recover_heap_limit() {
             return Err("JavaScript heap limit exceeded; execution terminated".to_string());
         }
         match result {
-            Ok(v) if !fired => self.v8_to_json(v),
+            Ok(v) if !fired => Ok(v),
             Ok(_) => Err("eval timed out".to_string()),
             Err(e) => {
                 let msg = e.to_string();
                 if fired || msg.contains("execution terminated") {
                     Err("eval timed out".to_string())
                 } else {
-                    Err(format!("JS error: {}", msg))
+                    Err(msg)
                 }
             }
         }
@@ -3109,7 +3136,7 @@ impl TelemacoJsRuntime {
         format!("{{\"injectedScriptId\":1,\"id\":{}}}", counter)
     }
 
-    fn wrap_expression(expression: &str) -> String {
+    fn wrap_expression(expression: &str, suppress_errors: bool) -> String {
         let trimmed = expression.trim();
 
         let is_multi_statement = trimmed.starts_with("var ")
@@ -3120,11 +3147,8 @@ impl TelemacoJsRuntime {
             || trimmed.starts_with("while ")
             || trimmed.starts_with("return ");
 
-        if is_multi_statement {
-            format!(
-                "(function() {{ try {{\n{}\n}} catch(e) {{ return null; }} }})()",
-                expression
-            )
+        let body = if is_multi_statement {
+            expression.to_string()
         } else {
             // Strip trailing semicolons + whitespace before wrapping in
             // `return (...);`. Playwright's utility-script expression is
@@ -3138,10 +3162,12 @@ impl TelemacoJsRuntime {
             // `//# sourceURL=...` line comment the caller may have appended
             // (Puppeteer's evaluated bundles do).
             let cleaned = trimmed.trim_end_matches(|c: char| c == ';' || c.is_whitespace());
-            format!(
-                "(function() {{ try {{ return (\n{}\n); }} catch(e) {{ return null; }} }})()",
-                cleaned
-            )
+            format!("return (\n{}\n);", cleaned)
+        };
+        if suppress_errors {
+            format!("(function() {{ try {{\n{body}\n}} catch(e) {{ return null; }} }})()")
+        } else {
+            format!("(function() {{\n{body}\n}})()")
         }
     }
 
@@ -3233,6 +3259,32 @@ impl TelemacoJsRuntime {
         &mut self,
         result: deno_core::v8::Global<deno_core::v8::Value>,
     ) -> Result<serde_json::Value, String> {
+        self.v8_to_json_with_limit(result, None)
+    }
+
+    fn v8_to_json_with_limit(
+        &mut self,
+        result: deno_core::v8::Global<deno_core::v8::Value>,
+        max_result_bytes: Option<usize>,
+    ) -> Result<serde_json::Value, String> {
+        fn copy_string(
+            scope: &mut deno_core::v8::HandleScope,
+            value: deno_core::v8::Local<deno_core::v8::Value>,
+            limit: Option<usize>,
+        ) -> Result<String, String> {
+            let Some(limit) = limit else {
+                return Ok(value.to_rust_string_lossy(scope));
+            };
+            let string = value.to_string(scope)
+                .ok_or("JS result string conversion failed")?;
+            // UTF-16 length is a constant-time lower bound on UTF-8 bytes.
+            // Reject huge strings before even scanning their UTF-8 length.
+            if string.length() > limit || string.utf8_length(scope) > limit {
+                return Err(format!("evaluation result exceeds {limit} byte limit"));
+            }
+            Ok(string.to_rust_string_lossy(scope))
+        }
+
         let scope = &mut self.runtime.handle_scope();
         let local = deno_core::v8::Local::new(scope, result);
 
@@ -3247,7 +3299,7 @@ impl TelemacoJsRuntime {
             return Ok(serde_json::json!(n));
         }
         if local.is_string() {
-            let s = local.to_rust_string_lossy(scope);
+            let s = copy_string(scope, local, max_result_bytes)?;
             return Ok(serde_json::Value::String(s));
         }
 
@@ -3262,7 +3314,7 @@ impl TelemacoJsRuntime {
                     {
                         let args = [local];
                         if let Some(result) = stringify_fn.call(scope, json_obj.into(), &args) {
-                            let json_str = result.to_rust_string_lossy(scope);
+                            let json_str = copy_string(scope, result, max_result_bytes)?;
                             if let Ok(val) = serde_json::from_str(&json_str) {
                                 return Ok(val);
                             }
@@ -3272,7 +3324,7 @@ impl TelemacoJsRuntime {
             }
         }
 
-        let s = local.to_rust_string_lossy(scope);
+        let s = copy_string(scope, local, max_result_bytes)?;
         Ok(serde_json::Value::String(s))
     }
 

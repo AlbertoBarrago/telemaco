@@ -3828,27 +3828,56 @@ impl Page {
     }
 
     /// Like [`Self::evaluate`] but bounded by a V8 watchdog so a runaway
-    /// expression cannot hang the process. A non-zero `timeout` of zero falls
-    /// back to the unbounded path.
+    /// expression cannot hang the process. A zero `timeout` falls back to the
+    /// unbounded path. Errors become null for compatibility with [`Self::evaluate`].
     pub fn evaluate_with_timeout(
         &mut self,
         expression: &str,
         timeout: std::time::Duration,
     ) -> serde_json::Value {
-        if let Some(js) = &mut self.js {
-            match js.evaluate_with_timeout(expression, timeout) {
-                Ok(val) => val,
-                Err(e) => {
-                    tracing::debug!(
-                        "JS eval error/timeout for '{}': {}",
-                        truncate_on_char_boundary(expression, 80),
-                        e
-                    );
-                    serde_json::Value::Null
-                }
+        match self.try_evaluate_with_timeout(expression, timeout) {
+            Ok(val) => val,
+            Err(e) => {
+                tracing::debug!(
+                    "JS eval error/timeout for '{}': {}",
+                    truncate_on_char_boundary(expression, 80),
+                    e
+                );
+                serde_json::Value::Null
             }
-        } else {
-            self.evaluate(expression)
+        }
+    }
+
+    /// Watchdog-bounded evaluation that preserves JavaScript and timeout errors.
+    /// After a timeout the runtime clears V8 termination before returning, so
+    /// the next evaluation can run. A zero timeout disables the watchdog.
+    pub fn try_evaluate_with_timeout(
+        &mut self,
+        expression: &str,
+        timeout: std::time::Duration,
+    ) -> Result<serde_json::Value, String> {
+        match self.js.as_mut() {
+            Some(js) => js.evaluate_with_timeout(expression, timeout),
+            None => Ok(self.evaluate(expression)),
+        }
+    }
+
+    /// Evaluate with a watchdog and a byte limit before copying results from V8.
+    pub fn try_evaluate_with_result_limit(
+        &mut self,
+        expression: &str,
+        timeout: std::time::Duration,
+        max_result_bytes: usize,
+    ) -> Result<serde_json::Value, String> {
+        match self.js.as_mut() {
+            Some(js) => js.evaluate_with_result_limit(expression, timeout, max_result_bytes),
+            None => {
+                let result = self.evaluate(expression);
+                if result.as_str().is_some_and(|text| text.len() > max_result_bytes) {
+                    return Err(format!("evaluation result exceeds {max_result_bytes} byte limit"));
+                }
+                Ok(result)
+            }
         }
     }
 
@@ -5708,6 +5737,39 @@ mod tests {
 
         let after = page.js.as_mut().unwrap().evaluate("1 + 1").unwrap();
         assert_eq!(after, serde_json::json!(2.0));
+    }
+
+    #[test]
+    fn bounded_evaluation_preserves_errors_null_and_recovers_after_timeout() {
+        let mut page = import_map_test_page(
+            "eval-timeout", "http://127.0.0.1:9", "<html><body></body></html>",
+        );
+        let budget = std::time::Duration::from_millis(50);
+        assert_eq!(page.try_evaluate_with_timeout("null", budget), Ok(serde_json::Value::Null));
+        let error = page.try_evaluate_with_timeout("(function(){throw new Error('test failure')})()", budget).unwrap_err();
+        assert!(error.contains("test failure"), "{error}");
+        let timeout = page.try_evaluate_with_timeout("(function(){while(true){}})()", budget).unwrap_err();
+        assert!(timeout.contains("timed out"), "{timeout}");
+        assert_eq!(page.try_evaluate_with_timeout("1+1", budget), Ok(serde_json::json!(2.0)));
+        // Existing callers intentionally retain the null-on-error contract.
+        assert_eq!(page.evaluate_with_timeout("(function(){throw new Error('legacy')})()", budget), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn evaluation_result_limit_does_not_cap_legacy_evaluation() {
+        let mut page = import_map_test_page(
+            "eval-result-limit", "http://127.0.0.1:9", "<html><body></body></html>",
+        );
+        let budget = std::time::Duration::from_secs(1);
+        let expression = "'x'.repeat(32)";
+        let error = page.try_evaluate_with_result_limit(expression, budget, 8).unwrap_err();
+        assert!(error.contains("byte limit"), "{error}");
+        assert_eq!(page.try_evaluate_with_timeout(expression, budget), Ok(serde_json::json!("x".repeat(32))));
+        assert_eq!(page.try_evaluate_with_result_limit("'ok'", budget, 8), Ok(serde_json::json!("ok")));
+        page.suspend_js();
+        assert_eq!(page.try_evaluate_with_result_limit("1+1", budget, 8), Ok(serde_json::Value::Null));
+        page.title = "x".repeat(32);
+        assert!(page.try_evaluate_with_result_limit("document.title", budget, 8).unwrap_err().contains("byte limit"));
     }
 
     #[tokio::test(flavor = "current_thread")]
