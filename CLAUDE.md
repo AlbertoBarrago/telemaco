@@ -135,8 +135,11 @@ Rules:
 1. To search, navigate to a search engine's results page (for example
    `https://duckduckgo.com/html/?q=<query>`), read it with `browser_markdown`,
    then open the target page.
-2. Loopback and RFC1918 are blocked by default (SSRF guard). Pass
-   `--allow-private-network` only when deliberately testing a local URL.
+2. Loopback and private IPs (localhost, RFC1918) are blocked by default by an
+   SSRF guard. It is a setting, not a limit: for a local URL pass
+   `--allow-private-network` (CLI, or in the MCP server args) or set
+   `TELEMACO_ALLOW_PRIVATE_NETWORK=1`. "Access to private/internal IP ... is
+   not allowed" only means the guard is on.
 3. State the URL before visiting it (`Navigating to: <url>`) and cite every
    source URL you consulted.
 <!-- TELEMACO_END -->
