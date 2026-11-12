@@ -5,6 +5,43 @@ All notable changes to Telemaco are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-11-12
+
+### Added
+
+- **`DecompressionStream`.** Pages can decode `gzip`, `deflate` and
+  `deflate-raw` streams incrementally (#14).
+- **ES modules in iframes.** Module scripts now run in the iframe's own realm,
+  with separate module caches, relative and dynamic imports, and cross-origin
+  isolation (#15). This uses a pinned local copy of `deno_core` 0.350.0; see
+  `vendor/deno_core/TELEMACO_PATCH.md`.
+- **Native Canvas drawing.** Paths, transforms and shaped text are drawn
+  natively when built with the `render` feature (#16). On a 5,000-rectangle
+  fixture, drawing went from about 419 ms to 14 ms. Builds without `render`
+  report drawing as unsupported.
+
+### Fixed
+
+- **MCP `browser_evaluate` could hang or flood memory.** Evaluation now runs
+  under the V8 watchdog through result serialization, reports timeouts and
+  JavaScript errors separately from a valid `null`, and caps results at 1 MiB.
+  The page stays usable after either error (#17).
+
+### Changed
+
+- **Installer instructions describe the SSRF guard as a setting.** The block
+  `telemaco install` writes still says loopback and private IPs are blocked by
+  default. It now also explains how to turn the guard off
+  (`--allow-private-network` or `TELEMACO_ALLOW_PRIVATE_NETWORK=1`) and that
+  the "Access to private/internal IP" error only means the guard is on.
+
+### Security
+
+- Updated dependencies flagged by RustSec advisories RUSTSEC-2026-0381, 0382,
+  0383, 0386, 0391, 0398, 0403 and 0410: `rustls-webpki` 0.103.16, `tokio`
+  1.54.1, `webpki-roots` and `webpki-root-certs` 1.0.11, `zstd` 0.13.4,
+  `zstd-safe` 7.4.0, `zstd-sys` 2.1.2.
+
 ## [0.2.5] - 2026-10-19
 
 ### Fixed
@@ -115,6 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the lifecycle hook, but not the Apex content loading, which remains
   unresolved. The rest of the engine works normally.
 
+[0.2.6]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.6
 [0.2.5]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.5
 [0.2.4]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.4
 [0.2.3]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.3
