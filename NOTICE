@@ -26,5 +26,4 @@ licenses, including but not limited to:
   - ab_glyph (glyph rasterizer)
   - deno_core / V8 (JavaScript runtime)
   - chromiumoxide (Chrome DevTools Protocol client)
-See the individual crate manifests and the vendor/ directory for the
-applicable license texts.
+See the individual crate manifests for the applicable license texts.
