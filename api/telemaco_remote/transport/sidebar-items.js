@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["AnyTransport","Arg","RemoteTarget","TransportError","TransportKind"],"fn":["select_transport"],"mod":["tailcat","tailcat_forward","tailcat_server"],"struct":["CapturedOutput","Connection","LocalTransport","PathInfo","ProcessSpec","TargetError","TransportConfig"],"trait":["Transport"]};

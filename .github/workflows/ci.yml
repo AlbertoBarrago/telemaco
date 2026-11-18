@@ -182,14 +182,12 @@ jobs:
           # `telemaco` uses its default `api` feature for the public library; an
           # empty feature set is not a supported crate configuration. Test that
           # no-render API normally and every non-render crate with defaults
-          # disabled. `telemaco-render` has paint-only test fixtures, so verify
-          # its feature-minimal library separately without compiling those
-          # fixtures.
+          # disabled. `telemaco-render` has no features any more and is fully
+          # tested by the render configuration above.
           cargo nextest run --release -p telemaco --no-fail-fast
           cargo nextest run --release --workspace --exclude telemaco \
             --exclude telemaco-render \
             --no-default-features --no-fail-fast
-          cargo check --release -p telemaco-render --no-default-features
 
       - name: Build no-render and stealth release
         run: cargo build --release -p telemaco-cli --bins --no-default-features --features stealth

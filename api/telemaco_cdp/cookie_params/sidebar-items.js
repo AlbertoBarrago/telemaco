@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["parse_cdp_cookie","parse_delete_cookies_params"],"struct":["DeleteCookiesFilter"]};

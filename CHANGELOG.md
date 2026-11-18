@@ -105,7 +105,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   NAT traversal, DERP fallback), with no public inbound port, no VPN and no
   Tailscale account. Tailcat is an optional runtime dependency, driven as the
   external `tailcat` CLI (v0.7.0 or newer); every other command works without
-  it. See [Remote over Tailcat](docs/Remote-over-Tailcat.md).
+  it. (The Remote over Tailcat guide was removed with the command.)
   - `remote serve` exposes a Telemaco agent through Tailcat's `exec` service
     and prints its address. Ephemeral key by default; `--allow` restricts
     client keys; `--key` uses a saved key.

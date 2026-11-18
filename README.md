@@ -15,7 +15,7 @@
     <a href="https://github.com/AlbertoBarrago/telemaco/blob/main/LICENSE"><img src="https://img.shields.io/github/license/AlbertoBarrago/telemaco?style=for-the-badge&label=license&color=9AA7B8" alt="License"></a>
     <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AlbertoBarrago/telemaco/ci.yml?style=for-the-badge&label=CI&color=45B1F8" alt="CI"></a>
     <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.85%2B-45B1F8?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"></a>
-    <a href="https://github.com/AlbertoBarrago/telemaco"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-9AA7B8?style=for-the-badge" alt="Platforms"></a>
+    <a href="https://github.com/AlbertoBarrago/telemaco"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-9AA7B8?style=for-the-badge" alt="Platforms"></a>
   </p>
 </div>
 
@@ -219,10 +219,8 @@ and text output never move underneath a release.
 
 API reference: the workspace crates that embed V8 (telemaco, telemaco-js,
 telemaco-browser, telemaco-mcp) cannot be rendered by docs.rs
-because building them requires compiling V8. The generated rustdoc for every
-crate is published with the site and browsable at
-[albz.it/telemaco/api](https://albz.it/telemaco/api) (also available in-repo
-under `api/`).
+because building them requires compiling V8. Generate their rustdoc locally
+with `cargo doc --no-deps --open`.
 
 ## Quick start
 
@@ -420,7 +418,7 @@ surface: screenshot, PDF, and MCP all keep working.
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update`, `remote` |
+| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update` |
 | `telemaco-js` | V8/`deno_core` runtime and DOM ops bridge |
 | `telemaco-dom` | DOM tree |
 | `telemaco-net` | HTTP client, stealth transport, cookie jar, robots cache, tracker blocklist |

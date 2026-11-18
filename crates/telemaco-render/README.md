@@ -2,16 +2,17 @@
 
 Optional scoped render layer for
 [Telemaco](https://github.com/AlbertoBarrago/telemaco): selector cascade,
-computed style, retained layout, and with the `paint` feature, text shaping and
-raster output for screenshots and PDF.
+computed style, retained layout, text shaping, and raster output for
+screenshots and PDF.
 
 ## Place in the workspace
 
 Telemaco's default build has no layout or paint engine, which is where its speed
-and low memory come from. This crate adds one behind a feature flag: it builds a
-layout tree from a `telemaco-dom` document plus its computed styles, lays it out
-with `taffy`, and optionally rasterizes it with `tiny-skia`, `cosmic-text` and
-`swash` (plus `resvg` for SVG and the `image` crate for bitmaps). It depends
+and low memory come from. This crate adds one behind `telemaco-js`'s `render`
+feature: it builds a layout tree from a `telemaco-dom` document plus its
+computed styles, lays it out with `taffy`, and rasterizes it with `tiny-skia`,
+`cosmic-text` and `swash` (plus `resvg` for SVG and the `image` crate for
+bitmaps). It depends
 only on `telemaco-dom`. The layer above is `telemaco-js`, which enables it
 through its own `render` feature and feeds the geometry back to scripts, so
 `getBoundingClientRect`, `elementFromPoint` and `IntersectionObserver` return
@@ -33,14 +34,6 @@ names (`taffy` / `cosmic_text`), so the crate source is unchanged and the layout
 and text output never move underneath a release. Anything that consumes `taffy`
 or `cosmic-text` can switch to the forks with a one-line change in `Cargo.toml`.
 
-## Features
-
-| Feature | Effect |
-|---------|--------|
-| `paint` | Rasterization: `tiny-skia` pixmaps, `cosmic-text` and `swash` for shaping and glyph rendering, `ab_glyph` fallback, `image` for bitmap decoding, `resvg`/`usvg` for SVG, `ureq` for resource fetching, plus `base64`, `url` and `wuff`. Off by default; the layout core works without it. |
-
-Without `paint` this is a layout-only crate.
-
 ## Usage
 
 ```rust
@@ -54,8 +47,7 @@ let div = tree.query_selector("div").unwrap().expect("no div");
 println!("{:?}", layout.rects.get(&div));
 ```
 
-With `paint`, `screenshot_png(&tree, (1280.0, 800.0), Some(base_url))` returns
-PNG bytes; the `_scrolled` and `_at_animation_time` variants pin scroll offset
+`screenshot_png(&tree, (1280.0, 800.0), Some(base_url))` returns PNG bytes; the `_scrolled` and `_at_animation_time` variants pin scroll offset
 and animation time for deterministic captures.
 
 ## Invariants

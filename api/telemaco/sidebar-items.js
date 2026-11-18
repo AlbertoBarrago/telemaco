@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Error","InterceptResolution","ResourceType"],"struct":["Browser","BrowserConfig","Cookie","CookieStore","InterceptedRequest","Page","RequestInfo","Response"],"type":["RequestCallback","ResponseCallback"]};

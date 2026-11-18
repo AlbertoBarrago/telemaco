@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["AGENT_PORT","MIN_TAILCAT_VERSION"],"struct":["TailcatCli","TailcatTransport","TailcatVersion"]};

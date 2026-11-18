@@ -68,9 +68,6 @@ step "test no-render: library" \
 step "test no-render: workspace" \
   cargo nextest run --release --workspace --exclude telemaco \
     --exclude telemaco-render --no-default-features --no-fail-fast
-# telemaco-render has paint-only fixtures, so check the library without them.
-step "check no-render: render crate" \
-  cargo check --release -p telemaco-render --no-default-features
 
 if [[ $QUICK -eq 0 ]]; then
   step "build no-render and stealth release" \

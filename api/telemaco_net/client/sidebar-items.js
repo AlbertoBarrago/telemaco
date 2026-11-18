@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["RequestCredentials","RequestMode","ResourceType","TelemacoNetError"],"fn":["env_allows_private_network","is_forbidden_ip"],"struct":["CallbackRegistry","RequestInfo","ResourceRequest","Response","SsrfGuardResolver","TelemacoHttpClient"],"type":["RequestCallback","ResponseCallback"]};

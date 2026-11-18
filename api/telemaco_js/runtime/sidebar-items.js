@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["is_fatal_event_loop_error","spawn_watchdog"],"struct":["IsolateHandle","PreparedModule","RemoteObjectInfo","TelemacoJsRuntime","WatchdogToken"]};

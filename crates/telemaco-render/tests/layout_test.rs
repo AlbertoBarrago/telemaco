@@ -394,7 +394,6 @@ fn post_flex_aspect_transfer_respects_content_and_border_boxes() {
     );
 }
 
-#[cfg(feature = "paint")]
 #[test]
 fn scrolled_ratio_sized_flex_clip_keeps_absolute_visual_visible() {
     let tree = parse_html(
@@ -3799,7 +3798,6 @@ fn nested_counter_scopes_feed_counters_function_and_expire_at_parent() {
     assert_eq!(generated("outer-two").as_deref(), Some("2 "));
 }
 
-#[cfg(feature = "paint")]
 #[test]
 fn generated_counter_text_reaches_the_positioned_pseudo_paint_path() {
     let tree = tailwind_line_counter_fixture();
@@ -3820,7 +3818,6 @@ fn generated_counter_text_reaches_the_positioned_pseudo_paint_path() {
     }
 }
 
-#[cfg(feature = "paint")]
 #[test]
 fn positioned_counter_inside_nested_inline_code_uses_the_code_gutter() {
     let tree = parse_html(
@@ -3887,7 +3884,6 @@ fn positioned_counter_inside_nested_inline_code_uses_the_code_gutter() {
     );
 }
 
-#[cfg(feature = "paint")]
 #[test]
 fn positioned_generated_text_honors_text_alignment_inside_its_box() {
     let tree = parse_html(
@@ -4254,7 +4250,6 @@ fn display_inherit_transitively_preserves_contents_and_block_display() {
     );
 }
 
-#[cfg(feature = "paint")]
 #[test]
 fn closed_details_content_does_not_paint() {
     let tree = parse_html(

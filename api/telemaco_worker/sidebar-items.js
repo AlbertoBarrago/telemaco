@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["WorkerCommand"],"fn":["main"],"struct":["WorkerResponse"]};

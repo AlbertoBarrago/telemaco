@@ -16,10 +16,10 @@ default = []
 # fetch()/XHR be routed through it so JS-level requests carry the same Chrome
 # TLS fingerprint and client hints as stealth navigation.
 stealth = ["telemaco-net/stealth"]
-# Builds the telemaco-render layout layer and exposes real box geometry to JS
-# (getBoundingClientRect, elementFromPoint, offset*), and with paint enabled,
-# rasterizes screenshots. Off by default so the scraping build stays lean.
-render = ["dep:telemaco-render", "telemaco-render/paint"]
+# Builds the telemaco-render layer: real box geometry for JS
+# (getBoundingClientRect, elementFromPoint, offset*) and screenshot
+# rasterization. Off by default so the scraping build stays lean.
+render = ["dep:telemaco-render"]
 
 [build-dependencies]
 deno_core = { version = "=0.350.0", package = "telemaco-deno-core" }

@@ -12,7 +12,7 @@ pub use markdown::HTML_TO_MARKDOWN_JS;
 pub use v8_flags::set_v8_flags;
 
 // Screenshot rasterization (PNG bytes) from the render layer. Available when the
-// render feature (which enables telemaco-render/paint) is compiled in.
+// render feature is compiled in.
 #[cfg(feature = "render")]
 pub use telemaco_render::{
     screenshot_png, screenshot_png_scrolled, screenshot_png_scrolled_at_animation_time,

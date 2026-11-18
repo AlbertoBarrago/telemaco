@@ -3162,7 +3162,6 @@ dependencies = [
  "telemaco-js",
  "telemaco-mcp",
  "telemaco-net",
- "telemaco-remote",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3291,18 +3290,6 @@ dependencies = [
  "url",
  "wreq",
  "wreq-util",
-]
-
-[[package]]
-name = "telemaco-remote"
-version = "0.2.6"
-dependencies = [
- "base64",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
 ]
 
 [[package]]

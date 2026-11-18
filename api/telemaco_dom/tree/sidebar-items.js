@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["AttachShadowError","NodeData","ShadowRootMode"],"struct":["Attribute","DomTree","Node","NodeId","ShadowRoot"]};

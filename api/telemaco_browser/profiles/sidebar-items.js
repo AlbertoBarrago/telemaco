@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["random_profile","select_profile"],"static":["PROFILES"],"struct":["BrowserProfile"]};

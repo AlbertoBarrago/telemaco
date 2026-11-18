@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["ServeKey"],"fn":["validate_forward_port"],"struct":["KeyName","NodeKey","ServeOptions","TailcatServer"]};

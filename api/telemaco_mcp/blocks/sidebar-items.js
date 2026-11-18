@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["pack_pages","paginate","split_blocks"],"struct":["Block"]};
