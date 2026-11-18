@@ -135,12 +135,11 @@ For any code change:
 2. The full render-feature nextest command above passes.
 3. `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --release -p telemaco-cli --bins --features render` compiles clean.
 4. The acceptance suite reports **44/44**.
-5. **Performance is a hard constraint.** Telemaco is roughly 12x faster and uses
-   about 6x less memory than headless Chrome on framework pages. Keep native
-   Rust fast paths and add a JS fallback only for real spec edge cases. If your
-   change could affect performance, benchmark old and new revisions interleaved
-   with identical release builds, fixtures, networks, viewport, settle policy,
-   and capture path. Report a distribution and memory use; the noise floor is
+5. **Performance is a hard constraint.** Keep native Rust fast paths and add
+   a JS fallback only for real spec edge cases. If your change could affect
+   performance, benchmark old and new revisions interleaved with identical
+   release builds, fixtures, networks, viewport, settle policy, and capture
+   path. Report a distribution and memory use; the noise floor is
    about plus or minus 10%.
 6. For rendering changes, complete the rendering checks above. For shared or
    feature-gated changes, also build and test without the `render` feature.
