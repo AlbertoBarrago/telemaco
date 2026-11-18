@@ -272,6 +272,11 @@ pub struct Page {
     pub history: Vec<String>,
     pub history_index: usize,
     pub network_events: Vec<NetworkEvent>,
+    /// Console entries of the current document, oldest first. The live
+    /// runtime records them; [`Page::console_messages`] and `suspend_js` move
+    /// them here, so they outlive an isolate suspended for a tab switch.
+    /// Cleared on navigation.
+    console_messages: Vec<telemaco_js::ops::ConsoleMessage>,
     response_bodies: std::collections::HashMap<String, StoredResponseBody>,
     response_body_order: std::collections::VecDeque<String>,
     network_event_counter: u32,
@@ -296,6 +301,18 @@ pub struct Page {
 }
 
 const MAX_STYLESHEET_IMPORT_DEPTH: u8 = 4;
+
+/// Console text for a page script's uncaught error, worded as Chrome logs it
+/// ("Uncaught Error: boom" plus the stack). The runtime's "JS error: " prefix
+/// is not part of what the page threw.
+fn uncaught_error_text(error: &str) -> String {
+    let error = error.strip_prefix("JS error: ").unwrap_or(error);
+    if error.starts_with("Uncaught ") {
+        error.to_string()
+    } else {
+        format!("Uncaught {error}")
+    }
+}
 const MAX_STYLESHEET_RESOURCES: usize = 128;
 const DEFAULT_NAVIGATION_TIMEOUT_MS: u64 = 30_000;
 
@@ -1128,6 +1145,7 @@ impl Page {
             history: Vec::new(),
             history_index: 0,
             network_events: Vec::new(),
+            console_messages: Vec::new(),
             response_bodies: std::collections::HashMap::new(),
             response_body_order: std::collections::VecDeque::new(),
             network_event_counter: 0,
@@ -2454,6 +2472,7 @@ impl Page {
                             );
                             if let Err(error) = js.execute_script_guarded(&execution_url, &code) {
                                 tracing::warn!("Script error ({}): {}", execution_url, error);
+                                js.record_console_message("error", &uncaught_error_text(&error));
                             }
                             let _ = js.execute_script(
                                 "<current-script>",
@@ -2471,6 +2490,7 @@ impl Page {
                             js.execute_script_guarded(&script.base_url, &script.inline)
                         {
                             tracing::warn!("Inline script error: {}", error);
+                            js.record_console_message("error", &uncaught_error_text(&error));
                         }
                         let _ = js
                             .execute_script("<current-script>", "globalThis.__currentScriptNid=0;");
@@ -3046,6 +3066,7 @@ impl Page {
         self.referrer = referrer.to_string();
         self.url = Some(url.clone());
         self.network_events.clear();
+        self.console_messages.clear();
 
         if self.context.obey_robots {
             if url.scheme() == "http" || url.scheme() == "https" {
@@ -3772,6 +3793,27 @@ impl Page {
             .unwrap_or((0.0, 0.0))
     }
 
+    /// Console entries (`console.*` calls and uncaught page-script errors) of
+    /// the current document, oldest first, capped at
+    /// [`telemaco_js::ops::MAX_CONSOLE_MESSAGES`].
+    pub fn console_messages(&mut self) -> &[telemaco_js::ops::ConsoleMessage] {
+        self.sync_console_messages();
+        &self.console_messages
+    }
+
+    /// Move the entries the live runtime recorded into the page's own log.
+    fn sync_console_messages(&mut self) {
+        let Some(js) = &self.js else {
+            return;
+        };
+        self.console_messages.extend(js.take_console_messages());
+        let overflow = self
+            .console_messages
+            .len()
+            .saturating_sub(telemaco_js::ops::MAX_CONSOLE_MESSAGES);
+        self.console_messages.drain(..overflow);
+    }
+
     /// Absolute URLs the page pulled in via fetch()/XHR (issue #301). Empty
     /// when the page has no live JS runtime.
     pub fn fetched_urls(&self) -> Vec<String> {
@@ -4201,6 +4243,7 @@ impl Page {
     }
 
     pub fn suspend_js(&mut self) {
+        self.sync_console_messages();
         let Some(js) = &self.js else {
             return;
         };

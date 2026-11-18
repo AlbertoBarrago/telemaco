@@ -59,6 +59,27 @@ pub struct InterceptedRequest {
     pub resolver: tokio::sync::oneshot::Sender<InterceptResolution>,
 }
 
+/// One console entry recorded for the page: a `console.*` call or an uncaught
+/// page-script error. `level` is the console method as bootstrap.js reports it
+/// (`log`, `warning`, `error`, ...).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsoleMessage {
+    pub level: String,
+    pub text: String,
+}
+
+/// Console entries a page keeps. A page that logs in a loop must not grow
+/// memory without bound, so the oldest entries are dropped past this cap.
+pub const MAX_CONSOLE_MESSAGES: usize = 1_000;
+
+/// Append to a bounded console log, dropping the oldest entry when full.
+pub fn push_console_message(log: &mut VecDeque<ConsoleMessage>, level: &str, text: &str) {
+    if log.len() >= MAX_CONSOLE_MESSAGES {
+        log.pop_front();
+    }
+    log.push_back(ConsoleMessage { level: level.to_string(), text: text.to_string() });
+}
+
 #[derive(Debug, Clone)]
 pub struct StoredNetworkResponseBody {
     pub body: String,
@@ -114,6 +135,9 @@ pub struct TelemacoState {
     // order. Surfaced by `--dump assets` so resources pulled in by script, not
     // just static DOM attributes, are listed (issue #301).
     pub fetched_urls: Vec<String>,
+    /// console.* calls and uncaught page-script errors since the owning Page
+    /// last drained them, oldest first, capped at [`MAX_CONSOLE_MESSAGES`].
+    pub console_messages: VecDeque<ConsoleMessage>,
     // Frame documents that have been fetched and are waiting for a realm.
     // Building one needs the whole runtime, which an op cannot reach, so
     // `op_frame_document_ready` queues here and the Page drains it between
@@ -285,6 +309,7 @@ impl TelemacoState {
             network_response_body_order: VecDeque::new(),
             network_response_body_counter: 0,
             fetched_urls: Vec::new(),
+            console_messages: VecDeque::new(),
             pending_frames: Vec::new(),
             pending_frame_bytes: 0,
             frame_id_counter: 0,
@@ -2109,7 +2134,7 @@ fn compare_node_order(dom: &DomTree, a: NodeId, b: NodeId) -> i32 {
 }
 
 #[op2(fast)]
-fn op_console_msg(#[string] level: &str, #[string] msg: &str) {
+fn op_console_msg(state: &OpState, #[string] level: &str, #[string] msg: &str) {
     // React/Next.js hydration mismatches (e.g. "Minified React error #418") are
     // false alarms: the server-rendered HTML differs from the client render for
     // reasons unrelated to the engine (non-deterministic ids, streaming SSR), and
@@ -2123,6 +2148,19 @@ fn op_console_msg(#[string] level: &str, #[string] msg: &str) {
         "error" => tracing::error!(target: "telemaco::console", "{}", msg),
         _ => tracing::info!(target: "telemaco::console", "{}", msg),
     }
+
+    // Keep the entry for the Page (browser_console_messages). try_borrow on
+    // both levels: a console call made while Rust holds the state loses the
+    // entry instead of panicking, and catch_unwind keeps anything else from
+    // unwinding into V8's FFI frame.
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let Some(shared) = state.try_borrow::<SharedState>() else {
+            return;
+        };
+        if let Ok(mut page) = shared.try_borrow_mut() {
+            push_console_message(&mut page.console_messages, level, msg);
+        }
+    }));
 }
 
 // Fallback cache for runtimes that have no owning TelemacoHttpClient, such as

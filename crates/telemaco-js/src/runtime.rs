@@ -2995,6 +2995,17 @@ impl TelemacoJsRuntime {
         self.state.borrow().fetched_urls.clone()
     }
 
+    /// Drain the console entries recorded since the last call, oldest first.
+    pub fn take_console_messages(&self) -> Vec<crate::ops::ConsoleMessage> {
+        self.state.borrow_mut().console_messages.drain(..).collect()
+    }
+
+    /// Record an entry from the Rust side, such as an uncaught page-script
+    /// error, in order with the page's own console calls.
+    pub fn record_console_message(&self, level: &str, text: &str) {
+        crate::ops::push_console_message(&mut self.state.borrow_mut().console_messages, level, text);
+    }
+
     pub fn dom_ref(&self) -> Option<std::cell::Ref<'_, Option<DomTree>>> {
         let r = self.state.borrow();
         if r.dom.is_some() {
