@@ -11,7 +11,6 @@ WORKDIR /build
 
 # Cache dependency compilation by copying manifests first
 COPY Cargo.toml Cargo.lock ./
-COPY vendor/ vendor/
 COPY crates/telemaco-dom/Cargo.toml       crates/telemaco-dom/Cargo.toml
 COPY crates/telemaco-net/Cargo.toml       crates/telemaco-net/Cargo.toml
 COPY crates/telemaco-browser/Cargo.toml   crates/telemaco-browser/Cargo.toml

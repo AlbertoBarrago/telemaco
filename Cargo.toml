@@ -39,8 +39,8 @@ servo_arc = "0.4"
 cssparser = "0.34"
 # Layout engine for the optional render layer (telemaco-render). Pure Rust.
 # `mentore` is the Telemaco-maintained fork of Taffy (same lib name `taffy`,
-# so `use taffy::` keeps compiling unchanged) pinned to the exact version the
-# vendored tree built against, so the layout never changes on a fresh resolve.
+# so `use taffy::` keeps compiling unchanged) pinned to an exact version so the
+# layout never changes on a fresh resolve.
 taffy = { version = "=0.12.1", package = "mentore" }
 # CPU-only pure-Rust 2D rasterizer for the render layer's paint step.
 tiny-skia = "0.12"
@@ -67,13 +67,6 @@ uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 anyhow = "1"
 base64 = "0.22"
-
-[patch.crates-io]
-# Removed: the taffy and cosmic-text patches pointing at vendor/ cannot travel
-# to crates.io (a [patch] is a local build directive, not something a published
-# crate carries). telemaco-render now depends on the published forks mentore and
-# athena-text directly, which expose the same lib names (taffy / cosmic_text).
-# The vendor/ directories are no longer referenced and are kept for reference.
 
 # Unwinding (the Rust default) is REQUIRED for the anti-panic protocol: ops wrap
 # their bodies in std::panic::catch_unwind so a panic degrades to an error return
