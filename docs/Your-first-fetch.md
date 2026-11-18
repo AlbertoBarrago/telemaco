@@ -58,8 +58,8 @@ telemaco fetch https://my-spa.example --wait-until domcontentloaded --eval "docu
 ```
 --user-agent "..."        Override the User-Agent
 --timeout 30                Navigation timeout in seconds (default 30)
---wait 5                    Extra wait after the page settles, in seconds (default 5)
---selector ".main"          CSS selector to narrow output to
+--wait 5                    Fixed post-load delay in seconds (omitted: adaptive settle, 5s cap)
+--selector ".main"          Wait for a CSS selector before reading the page
 --proxy http://host:port    Route through a proxy
 --stealth                   Stealth client (TLS fingerprint, tracker blocking)
 -o, --output file.html      Write output to a file

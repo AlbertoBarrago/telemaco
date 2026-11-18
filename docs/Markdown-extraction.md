@@ -45,16 +45,18 @@ For pages that render content client-side:
 telemaco fetch https://my-spa.example --wait-until load --dump markdown
 ```
 
-## Narrow to a region
+## Wait for a region
 
-`--selector` restricts the conversion to a CSS selector:
+`--selector` waits until an element matching a CSS selector exists, then
+converts the whole page. It does not narrow the output; use it when the
+content you want is built by JavaScript after load:
 
 ```bash
 telemaco fetch https://example.com --selector "main" --dump markdown
 telemaco fetch https://example.com --selector "article.post" --dump markdown
 ```
 
-Useful for skipping nav, sidebars, and footers.
+To keep only part of the page, use `--focus` below.
 
 ## Narrow by keyword (`--focus`)
 

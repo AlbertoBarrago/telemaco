@@ -95,7 +95,7 @@ CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features rend
 CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features render,stealth
 ```
 
-Requires Rust 1.75+ ([rustup.rs](https://rustup.rs)). Stealth also needs CMake
+Requires Rust 1.85+ ([rustup.rs](https://rustup.rs)). Stealth also needs CMake
 and Clang. Use `-p telemaco-cli` so cargo does not relink the whole workspace:
 recompiling V8 is the cost worth avoiding.
 
