@@ -7,8 +7,7 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 use telemaco_browser::{BrowserContext, Page};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command as TokioCommand;
+use tokio::io::AsyncWriteExt;
 use tokio::time::{timeout, Duration};
 
 #[derive(Parser)]
@@ -29,12 +28,12 @@ struct Args {
 
     /// Enable stealth mode (consistent browser fingerprint, and with the
     /// `stealth` build feature, TLS impersonation plus tracker blocking).
-    /// Global: applies to fetch, scrape, and mcp.
+    /// Global: applies to fetch and mcp.
     #[arg(long, global = true)]
     stealth: bool,
 
     /// Respect robots.txt before navigating to an HTTP(S) URL.
-    /// Global: applies to fetch and scrape.
+    /// Global: applies to fetch.
     #[arg(long, global = true)]
     obey_robots: bool,
 
@@ -77,8 +76,7 @@ enum Command {
         /// Read newline-delimited URLs from a file (one per line; blank lines
         /// and lines starting with `#` are skipped). Use `-` for stdin. Enables
         /// batch mode: every URL is fetched raw (--dump original) and one JSON
-        /// status line is printed per URL. For rendered/DOM batch output use
-        /// `scrape` instead (issue #349).
+        /// status line is printed per URL (issue #349).
         #[arg(long)]
         file: Option<std::path::PathBuf>,
 
@@ -131,25 +129,6 @@ enum Command {
         /// Capture the settled page as a PNG. Requires the `render` feature.
         #[arg(long, short = 's', value_name = "FILE", conflicts_with = "file")]
         screenshot: Option<std::path::PathBuf>,
-    },
-
-    Scrape {
-        urls: Vec<String>,
-
-        #[arg(long, short)]
-        eval: Option<String>,
-
-        #[arg(long, default_value_t = std::num::NonZeroUsize::new(10).unwrap())]
-        concurrency: std::num::NonZeroUsize,
-
-        #[arg(long, default_value = "json")]
-        format: String,
-
-        #[arg(long, default_value_t = 60, value_parser = clap::value_parser!(u64).range(1..))]
-        timeout: u64,
-
-        #[arg(long, short)]
-        quiet: bool,
     },
 
     /// Replace the installed binaries with the latest release, keeping the
@@ -315,7 +294,6 @@ fn is_quiet_command(cmd: &Option<Command>) -> bool {
     matches!(
         cmd,
         Some(Command::Fetch { quiet: true, .. })
-            | Some(Command::Scrape { quiet: true, .. })
     )
 }
 
@@ -443,12 +421,12 @@ async fn main() -> anyhow::Result<()> {
                 if screenshot.is_some() {
                     anyhow::bail!("--screenshot is only supported for a single URL, not --file batch mode.");
                 }
-                // Batch mode is raw HTTP only. Rendering each URL through the
-                // browser/JS stack is what `scrape` is for.
+                // Batch mode is raw HTTP only: rendering each URL through the
+                // browser/JS stack takes one `fetch` per URL.
                 match dump {
                     None | Some(DumpFormat::Original) => {}
                     Some(_) => anyhow::bail!(
-                        "batch mode (--file) only supports --dump original. Use `scrape` for rendered/DOM output."
+                        "batch mode (--file) only supports --dump original. Run one `fetch` per URL for rendered/DOM output."
                     ),
                 }
                 let urls = read_urls_from_file(&file)?;
@@ -493,27 +471,6 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .await?;
             }
-        }
-        Some(Command::Scrape {
-            urls,
-            eval,
-            concurrency,
-            format,
-            timeout,
-            quiet,
-        }) => {
-            run_parallel_scrape(
-                urls,
-                eval,
-                concurrency.get(),
-                &format,
-                timeout,
-                quiet,
-                global_proxy,
-                stealth,
-                obey_robots,
-            )
-            .await?;
         }
         Some(Command::Update { check, force }) => {
             update::run(check, force).await?;
@@ -1155,9 +1112,8 @@ fn read_urls_from_file(path: &std::path::Path) -> anyhow::Result<Vec<String>> {
 }
 
 /// Batch raw fetch: run `--dump original` over many URLs concurrently and print
-/// one JSON status line per URL (issue #349). This is the raw-resource-check
-/// counterpart to `scrape`; it never renders, so there is no browser/JS cost
-/// per URL. Output stays in input order regardless of completion order.
+/// one JSON status line per URL (issue #349). It never renders, so there is
+/// no browser/JS cost per URL. Output stays in input order regardless of completion order.
 async fn run_batch_fetch(
     urls: Vec<String>,
     concurrency: usize,
@@ -1491,251 +1447,6 @@ fn extract_readable_text(dom: &telemaco_dom::DomTree, node_id: telemaco_dom::Nod
     }
 
     result
-}
-
-async fn run_parallel_scrape(
-    urls: Vec<String>,
-    eval: Option<String>,
-    concurrency: usize,
-    format: &str,
-    timeout_secs: u64,
-    quiet: bool,
-    proxy: Option<String>,
-    stealth: bool,
-    obey_robots: bool,
-) -> anyhow::Result<()> {
-    let total = urls.len();
-    let start = Instant::now();
-
-    if total == 0 {
-        anyhow::bail!("No URLs provided. Pass at least one URL to scrape.");
-    }
-
-    if !quiet {
-        eprintln!(
-            "Scraping {} URLs with {} concurrent workers (per-worker timeout: {}s)...",
-            total, concurrency, timeout_secs
-        );
-    }
-
-    let worker_name = if cfg!(windows) {
-        "telemaco-worker.exe"
-    } else {
-        "telemaco-worker"
-    };
-    let worker_path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join(worker_name)))
-        .unwrap_or_else(|| std::path::PathBuf::from(worker_name));
-
-    if !worker_path.exists() {
-        anyhow::bail!(
-            "Worker binary not found at {}. Build with: cargo build --release",
-            worker_path.display()
-        );
-    }
-
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(concurrency));
-    let eval = Arc::new(eval);
-    let worker_path = Arc::new(worker_path);
-    let worker_timeout = Duration::from_secs(timeout_secs);
-    let read_timeout = Duration::from_secs(timeout_secs.min(30));
-    let shutdown_timeout = Duration::from_secs(5);
-
-    let mut handles = Vec::new();
-
-    for (i, url) in urls.into_iter().enumerate() {
-        let sem = semaphore.clone();
-        let eval = eval.clone();
-        let worker_path = worker_path.clone();
-        let proxy = proxy.clone();
-
-        let handle = tokio::spawn(async move {
-            let _permit = sem.acquire().await.unwrap();
-            let task_start = Instant::now();
-
-            let mut child = match TokioCommand::new(worker_path.as_ref())
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .env("TELEMACO_PROXY", proxy.as_deref().unwrap_or(""))
-                .env("TELEMACO_STEALTH", if stealth { "1" } else { "" })
-                .env("TELEMACO_OBEY_ROBOTS", if obey_robots { "1" } else { "" })
-                .spawn()
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    return serde_json::json!({
-                        "url": url,
-                        "error": format!("Failed to spawn worker: {}", e),
-                        "time_ms": task_start.elapsed().as_millis(),
-                    });
-                }
-            };
-
-            let mut stdin = match child.stdin.take() {
-                Some(stdin) => stdin,
-                None => {
-                    let _ = timeout(shutdown_timeout, child.kill()).await;
-                    return serde_json::json!({
-                        "url": url,
-                        "error": "Failed to open worker stdin",
-                        "time_ms": task_start.elapsed().as_millis(),
-                    });
-                }
-            };
-            let stdout = match child.stdout.take() {
-                Some(stdout) => stdout,
-                None => {
-                    let _ = timeout(shutdown_timeout, child.kill()).await;
-                    return serde_json::json!({
-                        "url": url,
-                        "error": "Failed to open worker stdout",
-                        "time_ms": task_start.elapsed().as_millis(),
-                    });
-                }
-            };
-            let mut reader = BufReader::new(stdout);
-
-            let worker_result: Result<serde_json::Value, String> =
-                match timeout(worker_timeout, async {
-                    let nav_cmd = serde_json::json!({"cmd": "navigate", "url": url});
-                    let mut line = serde_json::to_string(&nav_cmd).unwrap();
-                    line.push('\n');
-                    if stdin.write_all(line.as_bytes()).await.is_err() {
-                        return Err("Write failed".to_string());
-                    }
-                    if stdin.flush().await.is_err() {
-                        return Err("Write failed".to_string());
-                    }
-
-                    let mut resp_line = String::new();
-                    match timeout(read_timeout, reader.read_line(&mut resp_line)).await {
-                        Ok(Ok(bytes)) if bytes > 0 => {}
-                        Ok(Ok(_)) | Ok(Err(_)) => return Err("Read failed".to_string()),
-                        Err(_) => return Err("timeout".to_string()),
-                    };
-
-                    let nav_resp: serde_json::Value = serde_json::from_str(resp_line.trim())
-                        .unwrap_or(serde_json::json!({"ok": false}));
-
-                    if !nav_resp["ok"].as_bool().unwrap_or(false) {
-                        return Err(nav_resp["error"]
-                            .as_str()
-                            .unwrap_or("navigate failed")
-                            .to_string());
-                    }
-
-                    let title = nav_resp["result"]["title"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_string();
-
-                    let eval_result = if let Some(ref expr) = *eval {
-                        let eval_cmd = serde_json::json!({"cmd": "evaluate", "expression": expr});
-                        let mut line = serde_json::to_string(&eval_cmd).unwrap();
-                        line.push('\n');
-                        if stdin.write_all(line.as_bytes()).await.is_err() {
-                            return Err("Write failed".to_string());
-                        }
-                        if stdin.flush().await.is_err() {
-                            return Err("Write failed".to_string());
-                        }
-
-                        let mut resp_line = String::new();
-                        match timeout(read_timeout, reader.read_line(&mut resp_line)).await {
-                            Ok(Ok(bytes)) if bytes > 0 => {
-                                let resp: serde_json::Value =
-                                    serde_json::from_str(resp_line.trim())
-                                        .unwrap_or(serde_json::json!({"ok": false}));
-                                resp["result"].clone()
-                            }
-                            Ok(Ok(_)) | Ok(Err(_)) => return Err("Read failed".to_string()),
-                            Err(_) => return Err("timeout".to_string()),
-                        }
-                    } else {
-                        serde_json::Value::Null
-                    };
-
-                    let shutdown_cmd = serde_json::json!({"cmd": "shutdown"});
-                    let mut line = serde_json::to_string(&shutdown_cmd).unwrap();
-                    line.push('\n');
-                    let _ = stdin.write_all(line.as_bytes()).await;
-                    let _ = stdin.flush().await;
-                    let _ = timeout(shutdown_timeout, child.wait()).await;
-
-                    Ok(serde_json::json!({
-                        "url": url,
-                        "title": title,
-                        "eval": eval_result,
-                        "time_ms": task_start.elapsed().as_millis(),
-                        "worker": i,
-                    }))
-                })
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_) => Err("timeout".to_string()),
-                };
-
-            match worker_result {
-                Ok(result) => result,
-                Err(error) => {
-                    let _ = timeout(shutdown_timeout, child.kill()).await;
-                    serde_json::json!({
-                        "url": url,
-                        "error": error,
-                        "time_ms": task_start.elapsed().as_millis(),
-                    })
-                }
-            }
-        });
-
-        handles.push(handle);
-    }
-
-    let mut results = Vec::new();
-    for handle in handles {
-        match handle.await {
-            Ok(result) => results.push(result),
-            Err(e) => results.push(serde_json::json!({"error": e.to_string()})),
-        }
-    }
-
-    let total_time = start.elapsed();
-
-    if format == "json" {
-        let output = serde_json::json!({
-            "total_urls": total,
-            "concurrency": concurrency,
-            "total_time_ms": total_time.as_millis(),
-            "avg_time_ms": total_time.as_millis() as f64 / total as f64,
-            "results": results,
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
-    } else {
-        for r in &results {
-            let url = r["url"].as_str().unwrap_or("?");
-            let title = r["title"].as_str().unwrap_or("");
-            let time = r["time_ms"].as_u64().unwrap_or(0);
-            let eval = &r["eval"];
-            if eval.is_null() {
-                println!("{}ms\t{}\t{}", time, url, title);
-            } else {
-                println!("{}ms\t{}\t{}", time, url, eval);
-            }
-        }
-        if !quiet {
-            eprintln!(
-                "\nTotal: {}ms for {} URLs ({} concurrent)",
-                total_time.as_millis(),
-                total,
-                concurrency
-            );
-        }
-    }
-
-    Ok(())
 }
 
 fn dump_links(page: &Page) -> String {
@@ -2318,20 +2029,6 @@ mod tests {
         let args = Args::try_parse_from(["telemaco", "fetch", "https://example.com"])
             .expect("clap should accept fetch without --v8-flags");
         assert!(args.v8_flags.is_none());
-    }
-
-    #[test]
-    fn parsed_v8_flags_with_scrape_subcommand() {
-        let args = Args::try_parse_from([
-            "telemaco",
-            "--v8-flags",
-            "--expose-gc",
-            "scrape",
-            "https://a.com",
-            "https://b.com",
-        ])
-        .expect("clap should accept --v8-flags with scrape");
-        assert_eq!(args.v8_flags.as_deref(), Some("--expose-gc"));
     }
 
     #[test]

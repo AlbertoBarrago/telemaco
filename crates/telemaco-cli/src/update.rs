@@ -80,17 +80,15 @@ async fn latest_release_tag(client: &reqwest::Client) -> Result<String> {
         .context("the release response carried no tag_name")
 }
 
-/// Where the running binary lives, and where its worker should sit.
+/// Where the running binary lives.
 ///
 /// Returns the resolved path alongside the one the user invoked, because a
 /// symlink means those differ and the difference is worth stating before
 /// anything is replaced.
-fn install_paths() -> Result<(PathBuf, PathBuf, PathBuf)> {
+fn install_paths() -> Result<(PathBuf, PathBuf)> {
     let invoked = std::env::current_exe().context("locating the running binary")?;
     let exe = invoked.canonicalize().unwrap_or_else(|_| invoked.clone());
-    let dir = exe.parent().context("the binary has no parent directory")?.to_path_buf();
-    let worker = dir.join(if cfg!(windows) { "telemaco-worker.exe" } else { "telemaco-worker" });
-    Ok((exe, worker, invoked))
+    Ok((exe, invoked))
 }
 
 /// Is this path inside a cargo build directory?
@@ -152,7 +150,7 @@ pub async fn run(check_only: bool, force: bool) -> Result<()> {
         );
     }
 
-    let (exe, worker, invoked) = install_paths()?;
+    let (exe, invoked) = install_paths()?;
 
     // Replacing cargo's output would leave a downloaded binary sitting in a
     // build directory, where the next `cargo build` silently reverts it and
@@ -224,13 +222,6 @@ pub async fn run(check_only: bool, force: bool) -> Result<()> {
         bail!("the downloaded binary reports {:?}, expected {latest}", reported.trim());
     }
 
-    // The worker goes first: if it fails, the old telemaco is still in place and
-    // still matches the old worker.
-    let new_worker = staging.join("telemaco-worker");
-    if new_worker.is_file() {
-        std::fs::rename(&new_worker, &worker)
-            .with_context(|| format!("replacing {}", worker.display()))?;
-    }
     std::fs::rename(&new_exe, &exe)
         .with_context(|| format!("replacing {}", exe.display()))?;
 
