@@ -16,7 +16,13 @@ from pathlib import Path
 from threading import Thread
 
 
-ROUNDS = 5
+# Latency is judged on the fastest round of each side. A shared CI runner is
+# bimodal (the same binary lands near 114 ms or near 165 ms at random), and the
+# noise only ever adds time, so the minimum estimates the binary's own cost
+# while a median of a few rounds flips between modes. Nine interleaved rounds
+# give each side many chances to reach the fast mode for about two extra
+# seconds of CI time.
+ROUNDS = 9
 PROCESS_TIMEOUT_SECONDS = 45
 LATENCY_FAILURE_RATIO = 1.20
 LATENCY_FAILURE_DELTA_MS = 10.0
@@ -122,6 +128,46 @@ def median(values: list[float | int]) -> float:
     return float(statistics.median(values))
 
 
+def evaluate_scenario(
+    scenario: str, samples: dict[str, dict[str, list[float | int]]]
+) -> tuple[dict[str, object], list[str]]:
+    """Compare one scenario's base and candidate samples against the thresholds.
+
+    Latency uses the minimum of each side (see ``ROUNDS``); the medians are kept
+    in the report for diagnosis only. RSS is not timing noise, so it stays on
+    the median. A metric fails only when both its ratio and its absolute delta
+    exceed their limits, so tiny scenarios cannot fail on a few milliseconds.
+
+    Returns the report entry and the failure messages (empty when it passes).
+    """
+    base_latency = float(min(samples["base"]["latency_ms"]))
+    pr_latency = float(min(samples["candidate"]["latency_ms"]))
+    base_rss = median(samples["base"]["rss_kib"])
+    pr_rss = median(samples["candidate"]["rss_kib"])
+    latency_ratio = pr_latency / base_latency
+    rss_ratio = pr_rss / base_rss
+    entry: dict[str, object] = {
+        "base_latency_ms": base_latency,
+        "candidate_latency_ms": pr_latency,
+        "latency_ratio": latency_ratio,
+        "base_latency_median_ms": median(samples["base"]["latency_ms"]),
+        "candidate_latency_median_ms": median(samples["candidate"]["latency_ms"]),
+        "base_rss_kib": base_rss,
+        "candidate_rss_kib": pr_rss,
+        "rss_ratio": rss_ratio,
+        "samples": samples,
+    }
+    failures = []
+    if (
+        latency_ratio > LATENCY_FAILURE_RATIO
+        and pr_latency - base_latency > LATENCY_FAILURE_DELTA_MS
+    ):
+        failures.append(f"{scenario} latency is {latency_ratio:.2f}x the base")
+    if rss_ratio > RSS_FAILURE_RATIO and pr_rss - base_rss > RSS_FAILURE_DELTA_KIB:
+        failures.append(f"{scenario} RSS is {rss_ratio:.2f}x the base")
+    return entry, failures
+
+
 def add_summary(markdown: str) -> None:
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
@@ -169,41 +215,24 @@ def main() -> None:
     report: dict[str, object] = {"rounds": ROUNDS, "scenarios": {}}
     lines = [
         "## Performance smoke comparison\n\n",
+        f"Best of {ROUNDS} interleaved rounds for latency, median for RSS. "
         "Fails above 20% and 10 ms for latency, or above 15% and 8 MiB for RSS.\n\n",
         "| Scenario | Base latency | PR latency | Change | Base RSS | PR RSS | Change |\n",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: |\n",
     ]
     failures = []
     for scenario in SCENARIOS:
-        base_latency = median(samples[scenario]["base"]["latency_ms"])
-        pr_latency = median(samples[scenario]["candidate"]["latency_ms"])
-        base_rss = median(samples[scenario]["base"]["rss_kib"])
-        pr_rss = median(samples[scenario]["candidate"]["rss_kib"])
-        latency_ratio = pr_latency / base_latency
-        rss_ratio = pr_rss / base_rss
-        report["scenarios"][scenario] = {
-            "base_latency_ms": base_latency,
-            "candidate_latency_ms": pr_latency,
-            "latency_ratio": latency_ratio,
-            "base_rss_kib": base_rss,
-            "candidate_rss_kib": pr_rss,
-            "rss_ratio": rss_ratio,
-            "samples": samples[scenario],
-        }
+        entry, scenario_failures = evaluate_scenario(scenario, samples[scenario])
+        report["scenarios"][scenario] = entry
+        failures.extend(scenario_failures)
         lines.append(
-            f"| {scenario} | {base_latency:.1f} ms | {pr_latency:.1f} ms | "
-            f"{(latency_ratio - 1) * 100:+.1f}% | {base_rss / 1024:.1f} MiB | "
-            f"{pr_rss / 1024:.1f} MiB | {(rss_ratio - 1) * 100:+.1f}% |\n"
+            f"| {scenario} | {entry['base_latency_ms']:.1f} ms | "
+            f"{entry['candidate_latency_ms']:.1f} ms | "
+            f"{(entry['latency_ratio'] - 1) * 100:+.1f}% | "
+            f"{entry['base_rss_kib'] / 1024:.1f} MiB | "
+            f"{entry['candidate_rss_kib'] / 1024:.1f} MiB | "
+            f"{(entry['rss_ratio'] - 1) * 100:+.1f}% |\n"
         )
-        latency_delta = pr_latency - base_latency
-        rss_delta = pr_rss - base_rss
-        if (
-            latency_ratio > LATENCY_FAILURE_RATIO
-            and latency_delta > LATENCY_FAILURE_DELTA_MS
-        ):
-            failures.append(f"{scenario} latency is {latency_ratio:.2f}x the base")
-        if rss_ratio > RSS_FAILURE_RATIO and rss_delta > RSS_FAILURE_DELTA_KIB:
-            failures.append(f"{scenario} RSS is {rss_ratio:.2f}x the base")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
