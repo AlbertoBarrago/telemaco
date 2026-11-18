@@ -102,9 +102,8 @@ per-agent rules and module layout.
 
 ## Conventions
 
-- Performance is a hard constraint (~12x faster, ~6x less memory than headless
-  Chrome on framework pages). Keep native Rust fast paths; add a JS fallback
-  only for real spec edge cases.
+- Performance is a hard constraint. Keep native Rust fast paths; add a JS
+  fallback only for real spec edge cases.
 - Commits/PRs/comments: short and factual, no em dashes, no AI filler.
 - The `skills/telemaco/SKILL.md` skill documents operating and validating the
   binary (build variants, stealth, MCP, visual comparison).

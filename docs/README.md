@@ -1,14 +1,6 @@
 Telemaco is an open-source headless browser engine written in Rust. It runs JavaScript via V8 on a real DOM and is built for web scraping and AI agents: use it from the shell with `telemaco fetch`, give an agent browser tools through the MCP server, or embed it as a Rust library.
 
-## Versus headless Chrome
-
-| Metric      | Telemaco  | Headless Chrome |
-| ----------- | -------- | --------------- |
-| Memory      | 30 MB    | 200+ MB         |
-| Binary size | 70 MB    | 300+ MB         |
-| Startup     | Instant  | ~2s             |
-| Page load   | 85 ms    | ~500 ms         |
-| Anti-detect | Built-in | None            |
+## Capabilities
 
 Rendering and stealth are both first-class capabilities. Release builds
 support screenshots, scroll-aware layout, and raster PDF export; stealth builds retain all of those surfaces while adding

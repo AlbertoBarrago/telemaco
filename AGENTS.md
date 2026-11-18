@@ -246,11 +246,10 @@ Tests: `cargo test -p telemaco-cli --no-default-features --bin telemaco installe
 - **telemaco** — embeddable Rust library API (git dependency; builds V8 locally, not on crates.io). Public request-interception API on `Page`: `add_preload_script`, `enable_interception` (channel of `InterceptedRequest`, resolved with `InterceptResolution::{Continue, Fulfill, Fail}`), and passive `on_request` / `on_response`. `op_fetch_url` invokes these for JS `fetch()`/XHR, so when touching it keep a `Continue` URL rewrite behind `validate_fetch_url` (the SSRF gate, same as redirects).
 ## Conventions
 
-- **Performance is a hard constraint** (Telemaco is ~12x faster and uses ~6x less
-  memory than headless Chrome on framework pages). Keep native Rust fast paths;
-  add a JS fallback only for real spec edge cases. Benchmark old and new
-  revisions interleaved with the same release build, page, network, viewport,
-  settle policy, and capture path. Report distributions and resource use; the
+- **Performance is a hard constraint.** Keep native Rust fast paths; add a JS
+  fallback only for real spec edge cases. Benchmark old and new revisions
+  interleaved with the same release build, page, network, viewport, settle
+  policy, and capture path. Report distributions and resource use; the
   noise floor is about plus or minus 10%.
 - **Keep ops panic-safe.** `op_dom` is wrapped in `catch_unwind` so a DOM-op
   panic returns null instead of aborting the process inside V8's FFI frame. New

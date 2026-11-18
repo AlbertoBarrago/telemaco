@@ -108,6 +108,6 @@ fixture. Do not introduce hostname-specific rendering logic.
 Telemaco supports many common layout and paint paths but is not a bundled Chrome
 build. Long-tail CSS, service workers, some Web APIs, native media, GPU or
 compositor effects, PDF structure, and platform font rasterization can differ
-from Chromium. Preserve the project's existing positioning and published
-benchmark claims when editing its documentation. Use the benchmark suite and
-matched inputs when adding or updating performance or fidelity measurements.
+from Chromium. Do not add performance, memory or size claims to the
+documentation without a measurement that can be reproduced; use matched inputs
+when adding or updating performance or fidelity measurements.
