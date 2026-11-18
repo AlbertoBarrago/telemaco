@@ -4,7 +4,6 @@ members = [
     "crates/telemaco-dom",
     "crates/telemaco-net",
     "crates/telemaco-browser",
-    "crates/telemaco-cdp",
     "crates/telemaco-js",
     "crates/telemaco-mcp",
     "crates/telemaco-render",
@@ -26,7 +25,6 @@ authors = ["Alberto Barrago"]
 telemaco-dom = { path = "crates/telemaco-dom", version = "0.2.0" }
 telemaco-net = { path = "crates/telemaco-net", version = "0.2.0" }
 telemaco-browser = { path = "crates/telemaco-browser", version = "0.2.0" }
-telemaco-cdp = { path = "crates/telemaco-cdp", version = "0.2.0" }
 telemaco-js = { path = "crates/telemaco-js", version = "0.2.0" }
 telemaco-mcp = { path = "crates/telemaco-mcp", version = "0.2.0" }
 telemaco-render = { path = "crates/telemaco-render", version = "0.2.0" }
@@ -47,7 +45,6 @@ tiny-skia = "0.12"
 # Pure-Rust glyph rasterizer for the render layer's text step.
 ab_glyph = "0.2"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.26"
 # No "cookies" feature: telemaco manages cookies through its own CookieJar
 # (telemaco-net/src/cookies.rs) and never uses reqwest's cookie store. Pulling
 # it in only added the cookie/cookie_store crates, and cookie 0.18.1's blanket
@@ -63,7 +60,6 @@ url = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
-uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 anyhow = "1"
 base64 = "0.22"

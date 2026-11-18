@@ -4316,8 +4316,7 @@ impl Page {
     /// Enable CDP-Fetch-style interception of JS-initiated `fetch()`/XHR.
     /// Returns a receiver yielding every such request; resolve each through its
     /// `resolver` with `InterceptResolution::{Continue, Fulfill, Fail}` to pass,
-    /// mock, or block it. Works in stealth and non-stealth. Mirrors how the CDP
-    /// server wires the channel (`telemaco-cdp/src/server.rs`).
+    /// mock, or block it. Works in stealth and non-stealth.
     pub fn enable_interception(
         &mut self,
     ) -> tokio::sync::mpsc::UnboundedReceiver<telemaco_js::ops::InterceptedRequest> {

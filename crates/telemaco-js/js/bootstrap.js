@@ -3664,9 +3664,8 @@ class Element extends Node {
     const _trusted = arguments[0] === _TRUSTED_ACTIVATION;
     // Pre-click activation steps (HTML spec): a checkbox/radio flips BEFORE the
     // click event dispatches, so listeners observe the new state, and the change
-    // is reverted if the event is cancelled. This mirrors the CDP mouse path in
-    // telemaco-cdp/src/domains/input.rs, which already implements it; without it
-    // el.click() dispatched an event but never toggled the control.
+    // is reverted if the event is cancelled. Without it el.click() dispatched an
+    // event but never toggled the control.
     const _tag = this.tagName;
     const _type = ((this.getAttribute && this.getAttribute('type')) || '').toLowerCase();
     const _checkable = _tag === 'INPUT' && (_type === 'checkbox' || _type === 'radio')

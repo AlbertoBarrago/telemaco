@@ -1,12 +1,14 @@
-//! Shared per-command V8 watchdog for the CDP server.
+//! Shared per-command V8 watchdog. The name predates the removal of the CDP
+//! server; `run_autonomous_event_loop_turn` in runtime.rs, which the MCP server
+//! drives, still arms it around synchronous V8 entry.
 //!
 //! One long-lived watchdog thread bounds every in-flight V8 command with a
 //! deadline, instead of spawning and joining a thread per command (which adds
 //! ~240us per command on the hot dispatch path). `arm` and `disarm` are a mutex
 //! plus a condvar notify, in the low microseconds.
 //!
-//! With the thread-per-connection server (issue #430) several connections can
-//! have a command armed at the same time (one isolate per connection, each on
+//! The removed thread-per-connection CDP server (issue #430) could have several
+//! commands armed at the same time (one isolate per connection, each on
 //! its own OS thread), so a single global slot would let one connection's arm
 //! overwrite another's and leave that command unbounded. The watchdog therefore
 //! tracks a set of armed slots keyed by a monotonic generation, fires whichever

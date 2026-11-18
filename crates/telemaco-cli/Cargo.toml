@@ -4,8 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Command line interface for Telemaco: fetch, CDP server, scraping and MCP."
-keywords = ["cli", "headless", "browser", "scraping", "puppeteer"]
+description = "Command line interface for Telemaco: fetch, scraping and MCP."
+keywords = ["cli", "headless", "browser", "scraping", "mcp"]
 categories = ["command-line-utilities", "web-programming"]
 homepage.workspace = true
 rust-version.workspace = true
@@ -21,12 +21,11 @@ path = "src/worker.rs"
 [features]
 default = []
 stealth = ["telemaco-browser/stealth", "telemaco-net/stealth", "telemaco-mcp/stealth"]
-render = ["telemaco-browser/render", "telemaco-cdp/render", "telemaco-mcp/render"]
+render = ["telemaco-browser/render", "telemaco-mcp/render"]
 
 [dependencies]
 telemaco-browser = { workspace = true }
 telemaco-mcp = { workspace = true }
-telemaco-cdp = { workspace = true }
 telemaco-dom = { workspace = true }
 telemaco-net = { workspace = true }
 telemaco-js = { workspace = true }

@@ -5,7 +5,7 @@ use std::rc::Rc;
 use deno_core::{JsRuntime, RuntimeOptions};
 use telemaco_dom::{DomTree, NodeId};
 
-/// Re-exported so other crates (telemaco-browser, telemaco-cdp) can name the V8
+/// Re-exported so other crates (telemaco-browser) can name the V8
 /// isolate handle without taking a direct dependency on deno_core.
 pub use deno_core::v8::IsolateHandle;
 
@@ -41,15 +41,13 @@ impl telemaco_render::CanvasSurfaceSource for RuntimeCanvasSurfaceSource<'_> {
 
 static SNAPSHOT: &[u8] = include_bytes!(env!("TELEMACO_SNAPSHOT_PATH"));
 
-/// Serializes V8 isolate construction across OS threads. The thread-per-
-/// connection server (issue #430) builds isolates on many threads. The main
-/// thread already warms up V8 once before any connection thread starts (see the
-/// `TelemacoJsRuntime::new` warmup in `telemaco-cdp` server startup), which is
-/// what actually prevents the `InitializeBuiltinJSDispatchTable` segfault of a
-/// first isolate built off the main thread. This lock is defense-in-depth: it
-/// keeps two connections from running V8's isolate setup concurrently in case
-/// any residual first-time process init races. Construction is rare and fast, so
-/// serializing it costs nothing measurable; isolate *execution* stays fully
+/// Serializes V8 isolate construction across OS threads. The removed
+/// thread-per-connection CDP server (issue #430) built isolates on many threads
+/// and warmed V8 up on the main thread first, which is what prevents the
+/// `InitializeBuiltinJSDispatchTable` segfault of a first isolate built off the
+/// main thread. Every current caller builds its isolates on the main thread;
+/// this lock stays as defense-in-depth in case one ever builds them elsewhere.
+/// Construction is rare and fast, so serializing it costs nothing measurable; isolate *execution* stays fully
 /// parallel, each isolate on its own thread with no shared lock.
 static ISOLATE_CREATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -314,7 +312,7 @@ impl TelemacoJsRuntime {
         let module_loader = Rc::new(module_loader);
 
         // Build the isolate under the process-wide creation lock so two
-        // connection threads never construct isolates concurrently (#430).
+        // threads never construct isolates concurrently (#430).
         let (runtime, isolate_handle, heap_limit_state) = {
             let _create_guard = ISOLATE_CREATE_LOCK
                 .lock()
