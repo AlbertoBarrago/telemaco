@@ -1,9 +1,10 @@
 //! telemaco-render: the optional scoped render layer for Telemaco.
 //!
 //! Telemaco's default build has no layout or paint engine, which is the source
-//! of its speed and low memory. This crate adds a render layer behind a feature
-//! flag: real CSS box geometry (so getBoundingClientRect, elementFromPoint, and
-//! IntersectionObserver return true values) and rasterized PNG screenshots.
+//! of its speed and low memory. This crate adds a render layer behind
+//! `telemaco-js`'s `render` feature: real CSS box geometry (so
+//! getBoundingClientRect, elementFromPoint, and IntersectionObserver return
+//! true values) and rasterized PNG screenshots.
 //!
 //! Phase 1 (this file): the layout core. A `LayoutNode` tree plus a viewport is
 //! laid out with taffy and the resulting border-box geometry is returned per
