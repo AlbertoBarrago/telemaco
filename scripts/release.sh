@@ -155,6 +155,12 @@ note "── still manual"
 printf '  Homebrew: the tap (AlbertoBarrago/homebrew-telemaco) pins url + sha256\n'
 printf '  per formula, and the macOS archives only exist once release.yml has\n'
 printf '  finished. Update Formula/telemaco.rb and Formula/telemaco-stealth.rb after.\n'
+# The archives ship only `telemaco` since telemaco-worker was removed (it last
+# shipped in 0.2.6). A formula that still runs `bin.install "telemaco-worker"`
+# fails `brew install` on the missing file, so the reminder names the line.
+printf '  Each archive holds only `telemaco`: the install block must not list\n'
+printf '  telemaco-worker (drop `bin.install "telemaco-worker"` and\n'
+printf '  `bin.install "telemaco-worker" => "telemaco-worker-stealth"`).\n'
 # Bounded on both sides so `127.0.0.1:3000` stops matching `0.1.3`: an
 # unbounded grep listed innocent lines here, and a reminder full of noise
 # teaches the reader to skim past the one line that does need a decision.
