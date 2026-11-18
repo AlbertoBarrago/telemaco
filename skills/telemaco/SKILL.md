@@ -1,18 +1,18 @@
 ---
 name: telemaco
-description: Operate and validate Telemaco for JavaScript page loading, stealth browsing, anti-fingerprinting, tracker blocking, screenshots and visual comparison, CDP automation with Puppeteer or Playwright, screencasting, PDF export, MCP browser interaction, and web extraction. Use when running Telemaco against deterministic fixtures or real sites, diagnosing rendering, geometry, resource, identity, or transport failures, or choosing the correct CLI, CDP, MCP, rendering, or stealth workflow.
+description: Operate and validate Telemaco for JavaScript page loading, stealth browsing, anti-fingerprinting, tracker blocking, screenshots and visual comparison, PDF export, MCP browser interaction, and web extraction. Use when running Telemaco against deterministic fixtures or real sites, diagnosing rendering, geometry, resource, identity, or transport failures, or choosing the correct CLI, MCP, rendering, or stealth workflow.
 ---
 
 # Telemaco
 
 Use Telemaco as a lightweight, stealth-capable Rust headless browser for
-automation. It embeds V8, owns the DOM and rendering pipeline, and exposes
-Chrome DevTools Protocol workflows without launching Chromium. Treat rendering
-and stealth as first-class, complementary capabilities.
+automation. It embeds V8, owns the DOM and rendering pipeline, and is driven
+from the CLI or through its MCP server, without launching Chromium. Treat
+rendering and stealth as first-class, complementary capabilities.
 
 ## Build variants
 
-Official release archives and Docker images include rendering. For a source
+Official release archives include rendering. For a source
 checkout, build release mode with the render feature:
 
 ```bash
@@ -26,7 +26,7 @@ browser-identity protections, and tracker blocking:
 CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --release -p telemaco-cli --bins --features render,stealth
 ```
 
-Build without rendering when only DOM, extraction, or CDP automation is needed:
+Build without rendering when only DOM, extraction, or MCP automation is needed:
 
 ```bash
 CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --release -p telemaco-cli --bins --no-default-features
@@ -37,18 +37,18 @@ Use `./target/release/telemaco` in the commands below when working from source.
 
 ## Use stealth
 
-The stealth build keeps the complete rendering, screenshot, screencast, PDF,
-CDP, and MCP surface. It adds a consistent browser fingerprint across TLS,
+The stealth build keeps the complete rendering, screenshot, PDF, and MCP
+surface. It adds a consistent browser fingerprint across TLS,
 HTTP headers, user agent, navigator, and WebGL surfaces; masks
 `navigator.webdriver`; masks patched native functions; and blocks the built-in
 tracker-domain list.
 
 Enable stealth at runtime with the global `--stealth` flag. It applies to
-`fetch`, `serve`, `scrape`, and `mcp`, before or after the subcommand:
+`fetch`, `scrape`, and `mcp`, before or after the subcommand:
 
 ```bash
 telemaco --stealth fetch https://example.com --screenshot page.png
-telemaco serve --stealth --port 9222
+telemaco mcp --stealth
 ```
 
 The runtime flag needs a `render,stealth` build for the wreq/BoringSSL transport.
@@ -73,27 +73,10 @@ Use `--dump original` for a binary or raw HTTP response that should bypass DOM
 and JavaScript processing. Use `scrape` for many URLs when the requested output
 does not require one screenshot per URL.
 
-## Drive CDP
+## PDF output
 
-Start the server:
-
-```bash
-telemaco serve --port 9222
-```
-
-Connect Puppeteer with `puppeteer-core` or Playwright with
-`chromium.connectOverCDP`. Standard `page.screenshot()` supports viewport and
-full-page capture; `page.pdf()` produces raster-backed print output. Scroll
-with page JavaScript before a viewport capture when the user wants a lower
-section of the page.
-
-Use raw CDP for `Page.captureScreenshot`, `Page.startScreencast`, and
-`Page.printToPDF`. A screencast client must acknowledge every
-`Page.screencastFrame` using `Page.screencastFrameAck`. Frames are driven by
-page activity; this is not fixed-frame-rate desktop capture.
-
-PDF output supports paper dimensions, margins, landscape, scale, backgrounds,
-and page ranges. It does not currently provide selectable text, tagged PDF,
+The MCP `browser_pdf` tool produces raster-backed print output. It supports
+paper dimensions, margins, landscape, scale, and backgrounds. It does not currently provide selectable text, tagged PDF,
 outlines, headers/footers, or complete CSS paged-media behavior.
 
 ## Drive MCP
@@ -105,7 +88,7 @@ or a framework rerender because element references may have changed.
 
 Render-enabled MCP builds expose `browser_screenshot` as an MCP PNG image and
 `browser_pdf` as an embedded PDF resource. MCP does not stream screencast
-frames; choose CDP for that workflow.
+frames.
 
 ## Validate visual behavior
 

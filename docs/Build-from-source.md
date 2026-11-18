@@ -16,7 +16,7 @@ cargo build --release -p telemaco-cli --bins --features render
 
 Binary is at `./target/release/telemaco`.
 
-This produces the release binary with geometry, screenshots, screencasting,
+This produces the release binary with geometry, screenshots,
 and PDF export.
 
 ## Rendering and stealth
@@ -37,7 +37,7 @@ cargo build --release -p telemaco-cli --bins --no-default-features --features st
 ```
 
 The second command keeps stealth while excluding layout, screenshots,
-screencasting, and PDF export.
+and PDF export.
 
 The stealth feature builds BoringSSL and generates Rust bindings. In addition
 to the default requirements, install CMake, Clang, and the libclang/LLVM

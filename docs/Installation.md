@@ -42,24 +42,14 @@ Download the `.zip` from [Releases](https://github.com/AlbertoBarrago/telemaco/r
 yay -S telemaco-browser
 ```
 
-## Docker
-
-```bash
-docker run -d --name telemaco -p 127.0.0.1:9222:9222 AlbertoBarrago/telemaco
-```
-
-Image: [AlbertoBarrago/telemaco](https://hub.docker.com/r/AlbertoBarrago/telemaco). Built on `distroless/cc`, with no shell or package manager in the runtime image.
-
-Official archives and the Docker image include the rendering engine. Source
-builders must pass `--features render`; see [Build from source](Build-from-source.md).
-
 ## From source
 
-See [Build from source](Build-from-source.md).
+See [Build from source](Build-from-source.md). Official archives include the rendering engine; source
+builders must pass `--features render`.
 
 ## What's in the archive
 
-- `telemaco`: CLI and CDP server.
+- `telemaco`: the CLI and the MCP server.
 - `telemaco-worker`: helper for the parallel `scrape` command. Keep both in the same directory.
 
 Archive suffixes identify the feature set: no suffix includes rendering,
@@ -79,6 +69,6 @@ Expected output: `"Example Domain"`, followed by a nonempty PNG at `smoke.png`.
 
 `cannot execute binary file`: wrong arch. Check `uname -m`.
 
-`GLIBC_2.35 not found`: distro is older than Ubuntu 22.04. Use Docker or build from source.
+`GLIBC_2.35 not found`: distro is older than Ubuntu 22.04. Build from source.
 
 macOS Gatekeeper warning: `xattr -d com.apple.quarantine ./telemaco`.

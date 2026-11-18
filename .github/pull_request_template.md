@@ -8,7 +8,7 @@ List the commands and manual checks you ran. Include focused regression tests an
 
 ## Rendering
 
-If this changes layout, paint, screenshots, screencast, or PDF output, include the viewport, device scale factor, output options, and before/after images. Write `Not applicable` otherwise.
+If this changes layout, paint, screenshots, or PDF output, include the viewport, device scale factor, output options, and before/after images. Write `Not applicable` otherwise.
 
 ## Performance
 

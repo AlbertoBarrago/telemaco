@@ -25,5 +25,4 @@ licenses, including but not limited to:
   - tiny-skia (2D rasterizer)
   - ab_glyph (glyph rasterizer)
   - deno_core / V8 (JavaScript runtime)
-  - chromiumoxide (Chrome DevTools Protocol client)
 See the individual crate manifests for the applicable license texts.

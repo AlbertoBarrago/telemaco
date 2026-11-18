@@ -1,4 +1,4 @@
-The `telemaco` crate embeds the engine in a Rust program with a `Browser` / `Page` / `Element` API plus a cookie store, no CDP round-trips. It builds V8 from source, so it is a git dependency rather than a crates.io release.
+The `telemaco` crate embeds the engine in a Rust program with a `Browser` / `Page` / `Element` API plus a cookie store, with no protocol round-trips. It builds V8 from source, so it is a git dependency rather than a crates.io release.
 
 ## Add the dependency
 
@@ -124,7 +124,7 @@ A `Continue` with `url: Some(...)` rewrites the target. The new URL is re-checke
 
 ### Preload scripts
 
-`add_preload_script` runs a script before any of the page's own `<script>` tags (the CDP `Page.addScriptToEvaluateOnNewDocument` contract), so it can install hooks before the page bootstraps. Call it before `goto`.
+`add_preload_script` runs a script before any of the page's own `<script>` tags (the same contract as Chrome's `Page.addScriptToEvaluateOnNewDocument`), so it can install hooks before the page bootstraps. Call it before `goto`.
 
 ```rust
 let mut page = browser.new_page().await?;
@@ -137,6 +137,5 @@ page.goto("https://example.com").await?;
 ## When to use which interface
 
 - Embedding the engine in a Rust service: this crate.
-- Driving from Node/Python with existing Puppeteer/Playwright code: the [CDP server](Connect-Puppeteer-or-Playwright.md).
 - Giving an AI agent browser tools: the [MCP server](Use-the-MCP-server.md).
 - One-off fetches and scraping from the shell: the [CLI](CLI-reference.md).

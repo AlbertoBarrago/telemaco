@@ -39,10 +39,9 @@ change feature gates or shared code:
 | No rendering | `cargo build --release -p telemaco-cli --bins --no-default-features` |
 | No rendering, with stealth | `cargo build --release -p telemaco-cli --bins --no-default-features --features stealth` |
 
-The standard release archives and Docker image include rendering. The
+The standard release archives include rendering. The
 `-no-render` release variants keep the smaller DOM, JavaScript, networking,
-CDP, and automation runtime but intentionally omit screenshots, screencast,
-and PDF output.
+and automation runtime but intentionally omit screenshots and PDF output.
 
 ```bash
 cargo build --release -p telemaco-cli --bins --features render
@@ -68,7 +67,7 @@ cargo nextest run --release --features render -p <crate>
 cargo nextest run --release --features render --no-fail-fast
 ```
 
-If you changed shared DOM, JavaScript, CDP, CLI, or feature-gated code, also
+If you changed shared DOM, JavaScript, MCP, CLI, or feature-gated code, also
 run the affected tests without rendering and build the no-render variant. A
 render-only request made through a no-render binary must return a clear
 unsupported error rather than panic or silently produce an invalid result.
@@ -78,7 +77,7 @@ single V8 isolate per process, so the runtime tests fail under it. `nextest`
 runs each test in its own process, which is the only supported way.
 
 The authoritative behavioral gate is the **acceptance suite** in
-[`acceptance/`](acceptance/README.md), 41 stages that must stay at 41/41:
+[`acceptance/`](acceptance/README.md), 45 stages that must stay at 45/45:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -94,9 +93,6 @@ stage that passed on the base now fails.
 The native renderer is shared by every capture surface:
 
 - CLI `fetch --screenshot` (`-s`), including viewport and full-page captures.
-- CDP `Page.captureScreenshot`, `Page.startScreencast`,
-  `Page.stopScreencast`, and `Page.printToPDF`.
-- Puppeteer and Playwright screenshot and PDF calls made through CDP.
 - MCP `browser_screenshot` and `browser_pdf`.
 
 It currently covers block, inline, flex, grid, table, float, positioned,
@@ -119,8 +115,7 @@ changes:
 4. Exercise the affected public surface, not just the renderer internally. In
    particular, cover clipped and full-page screenshots, viewport size and
    device-pixel ratio, and a scrolled page when geometry is involved.
-5. If lifecycle or animation scheduling changed, verify screencast frame
-   delivery and acknowledgment. If print layout changed, verify PDF page size,
+5. If print layout changed, verify PDF page size,
    margins, backgrounds, page ranges, and stream output where relevant.
 6. Compare old and new revisions with identical release builds, fixtures,
    viewport, device-pixel ratio, fonts, network state, settle time, scroll
@@ -139,7 +134,7 @@ For any code change:
 1. `cargo nextest run --release --features render` passes for the crates you touched.
 2. The full render-feature nextest command above passes.
 3. `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --release -p telemaco-cli --bins --features render` compiles clean.
-4. The acceptance suite reports **41/41**.
+4. The acceptance suite reports **45/45**.
 5. **Performance is a hard constraint.** Telemaco is roughly 12x faster and uses
    about 6x less memory than headless Chrome on framework pages. Keep native
    Rust fast paths and add a JS fallback only for real spec edge cases. If your
@@ -166,7 +161,7 @@ Keep them short and factual: what changed and why. We use a lightweight
 `type(scope): summary` style, matching the existing history:
 
 ```
-fix(cdp): honor text selection on Backspace and typing
+fix(js): honor text selection on Backspace and typing
 
 Backspace trimmed the last character and typing always appended, ignoring
 any selection. Both now respect a non-collapsed selection.
@@ -175,7 +170,7 @@ Fixes #316.
 ```
 
 - `type` is one of `fix`, `feat`, `docs`, `test`, `perf`, `chore`. The `scope`
-  is optional and lowercase (for example `cdp`, `js`, `net`, `stealth`, `cli`).
+  is optional and lowercase (for example `js`, `net`, `stealth`, `cli`, `mcp`).
 - No em dashes. Use commas, periods, or restructure the sentence.
 - No AI-generated filler ("This commit improves...", "As an AI...").
 - Do not add `Co-Authored-By` lines or list yourself as a co-author.
@@ -195,7 +190,7 @@ Open an issue with enough detail to reproduce:
 - The telemaco version or commit, plus OS and architecture.
 - The build configuration: render, render and stealth, no-render, or no-render
   and stealth.
-- A repro: a URL, an `--eval` snippet, or a short CDP sequence.
+- A repro: a URL, an `--eval` snippet, or a short MCP tool-call sequence.
 - What you expected and what actually happened.
 - If it is a rendering or compatibility issue, whether headless Chrome behaves
   the same. Include the viewport, device-pixel ratio, scroll position, capture

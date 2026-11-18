@@ -13,8 +13,7 @@ body:
       options:
         - JavaScript or DOM behavior
         - Rendering, layout, or paint
-        - Screenshot, screencast, or PDF output
-        - CDP, Puppeteer, or Playwright compatibility
+        - Screenshot or PDF output
         - Networking, cookies, or proxies
         - CLI or MCP
         - Rust API
