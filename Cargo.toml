@@ -7,7 +7,6 @@ members = [
     "crates/telemaco-js",
     "crates/telemaco-mcp",
     "crates/telemaco-render",
-    "crates/telemaco-remote",
     "crates/telemaco-cli",
     "crates/telemaco",
 ]
@@ -28,7 +27,6 @@ telemaco-browser = { path = "crates/telemaco-browser", version = "0.2.0" }
 telemaco-js = { path = "crates/telemaco-js", version = "0.2.0" }
 telemaco-mcp = { path = "crates/telemaco-mcp", version = "0.2.0" }
 telemaco-render = { path = "crates/telemaco-render", version = "0.2.0" }
-telemaco-remote = { path = "crates/telemaco-remote", version = "0.2.0" }
 
 html5ever = "0.39"
 markup5ever = "0.39"
