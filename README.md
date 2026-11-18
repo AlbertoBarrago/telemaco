@@ -22,51 +22,48 @@
 ---
 
 Telemaco runs real JavaScript through V8 (`deno_core`), keeps a real DOM tree,
-and owns its layout and paint pipeline. It targets web scraping and AI agent
-automation: fetch and extract from the shell with `telemaco fetch`, give an
-agent browser tools through the MCP server, or embed the engine as a Rust
-library. Rendering and stealth are first-class capabilities.
+and owns its layout and paint pipeline. It has three surfaces:
+
+- `telemaco fetch`: load a page from the shell and print HTML, text,
+  Markdown, links, assets, cookies, an evaluated expression or a screenshot.
+- `telemaco mcp`: an MCP server that gives AI agents stateful browser tools,
+  plus `telemaco install` to wire it into coding agents.
+- The `telemaco` crate: the engine as a Rust library.
 
 Telemaco is a derivative work of
-[Obscura](https://github.com/h4ckf0r0day/obscura) (Apache-2.0). It started as a
-fork and evolved into a distinct project with its own identity and a
-practical, scraping- and agent-oriented focus. See `NOTICE` for the full
-attribution.
+[Obscura](https://github.com/h4ckf0r0day/obscura), licensed under the Apache
+License, Version 2.0. See [`NOTICE`](NOTICE) for the full attribution.
 
-### How Telemaco differs from Obscura
+### Telemaco and Obscura
 
-Obscura is a browser engine; Telemaco is a browser engine **for automation**.
-Where Obscura focuses on the rendering core, Telemaco adds the surfaces that
-make it useful in production: a
-stateful MCP server for AI agents, stealth against bot detection, and a
-one-command installer that wires it into 15 coding agents.
+Telemaco forked Obscura at the end of August 2026 (Obscura `14da23d`,
+imported as Telemaco's first commit `a7657a6`) and renamed the crates, the
+binary and the project identity. Since then the two ship different things.
+Telemaco dropped the CDP server, `serve`, `scrape`, the worker binary, the
+Docker image and Windows builds (see [Removed](#removed)), and added the
+agent installer (`telemaco install`), `telemaco update`, `fetch --focus`,
+paginated `browser_markdown`, configurable MCP extraction limits, a DOM node
+budget, and a 44-stage acceptance suite.
 
-## Why Telemaco over headless Chrome?
-
-| Metric       | Telemaco      | Headless Chrome |
-|--------------|---------------|-----------------|
-| Memory       | **30 MB**     | 200+ MB         |
-| Binary size  | **70 MB**     | 300+ MB         |
-| Page load    | **85 ms**     | ~500 ms         |
-| Startup      | **Instant**   | ~2s             |
-| Anti-detect  | **Built-in**  | None            |
-
-Roughly 12x faster page loads and 6x less memory than headless Chrome on
-framework pages.
+The engine underneath is still largely Obscura's code. Of the 150,478
+non-blank lines of Rust and JavaScript in Obscura's `crates/` at the fork
+point, 132,622 (88%) are still present, unchanged, in the same files on
+`main`; the removed CDP server accounts for most of the rest. Method: a
+per-file line diff of each Obscura source file against its Telemaco
+counterpart, after the `obscura` to `telemaco` rename.
 
 ## Highlights
 
 - **Native rendering**: CSS layout and paint, viewport and full-page
-  screenshots, and PDF export. No Chromium,
-  no WebView.
+  screenshots, and PDF export, without Chromium or a WebView.
 - **Stealth mode**: wreq/BoringSSL transport, per-session fingerprint
   randomization, consistent browser identity, and a tracker blocklist.
-  Rendering stays fully available when stealth is on.
-- **MCP server**: stateful browser automation tools for Claude Desktop, Cursor,
-  and any MCP client, over stdio or HTTP.
-- **Hardened by default**: SSRF guards on loopback, RFC1918, and link-local
-  targets; a V8 termination watchdog per page; process-level hard deadlines, so
-  one bad page can never hang a worker.
+  Rendering stays available when stealth is on.
+- **MCP server**: stateful browser automation tools for Claude Desktop,
+  Cursor and any MCP client, over stdio or HTTP.
+- **Hardened by default**: SSRF guard on loopback, RFC1918 and link-local
+  targets; a V8 termination watchdog per page; a per-document DOM node
+  budget; a process-level hard deadline for `fetch`.
 
 ## Install
 
@@ -77,12 +74,11 @@ curl -fsSL https://raw.githubusercontent.com/AlbertoBarrago/telemaco/main/instal
 ```
 
 Installs the prebuilt binary for your platform (or builds from source if none
-is published yet), adds it to your `PATH`, then offers to run `telemaco
-install` to configure your AI coding agents. Options: `--prefix <dir>`,
-`--from-source`, `--yes`, `--uninstall` (removes the binary only; run `telemaco
-uninstall` first to also remove agent configs). See
-[Agent setup](#agent-setup-telemaco-install) below for `telemaco install` /
-`telemaco uninstall`.
+is published), adds it to your `PATH`, then offers to run `telemaco install`
+to configure your AI coding agents. Options: `--prefix <dir>`,
+`--from-source`, `--yes`, `--uninstall` (removes the binary only; run
+`telemaco uninstall` first to also remove agent configs). See
+[Agent setup](#agent-setup-telemaco-install) below.
 
 ### Homebrew (macOS)
 
@@ -91,10 +87,8 @@ brew tap albertobarrago/telemaco
 brew install telemaco
 ```
 
-Installs the render-enabled build (full DOM, layout, screenshots, PDF) as
-`telemaco`. The stealth
-variant is a separate formula that installs as `telemaco-stealth`, so the two
-can coexist:
+Installs the render-enabled build as `telemaco`. The stealth variant is a
+separate formula that installs as `telemaco-stealth`, so the two can coexist:
 
 ```bash
 brew install telemaco-stealth
@@ -102,49 +96,46 @@ telemaco-stealth --stealth fetch https://example.com --dump text
 ```
 
 Bottles are published for Apple Silicon and Intel macOS. On Linux use
-`install.sh` or a prebuilt archive. Upgrades go through `brew upgrade` rather
-than `telemaco update`, which would replace a binary Homebrew owns.
+`install.sh` or a prebuilt archive. Upgrade with `brew upgrade` rather than
+`telemaco update`, which would replace a binary Homebrew owns.
 
 ### Updating
 
 ```bash
 telemaco update            # replace the binary with the latest release
 telemaco update --check    # report only; exit 1 means an update is available
+telemaco update --force    # reinstall even when already on the latest version
 ```
 
-The update keeps the build variant you installed, so a stealth install stays a
-stealth install rather than quietly becoming the plain one. The download is
-verified by running it before anything is replaced, and the replacement itself
-is a rename, so a failure leaves the working install untouched.
+The update keeps the build variant you installed, so a stealth install stays
+a stealth install. The download is verified by running it before anything is
+replaced, and the replacement is a rename, so a failure leaves the working
+install untouched.
 
 Run interactively, telemaco checks once a day whether a newer release exists
 and says so. It never does this when stderr is not a terminal, which covers
-scripts, CI, and MCP clients: a browser people reach for to avoid leaving
-traces should not contact GitHub on its own. `TELEMACO_NO_UPDATE_CHECK=1`
-switches the check off entirely.
+scripts, CI and MCP clients. `TELEMACO_NO_UPDATE_CHECK=1` switches the check
+off entirely.
 
-`update` refuses when the binary it would replace turns out to be cargo build
-output, which happens when `~/.local/bin/telemaco` is a symlink into a
-checkout: replacing it would drop a downloaded binary into a build directory,
-where the next `cargo build` silently reverts it. A directory named `target` is
+`update` refuses when the binary it would replace is cargo build output (for
+example when `~/.local/bin/telemaco` is a symlink into a checkout), because the
+next `cargo build` would silently revert it. A directory named `target` is
 only treated as build output when a `Cargo.toml` sits beside it.
-
-Self-update is not available on Windows yet; a running `.exe` cannot be
-replaced in place, so the command says so instead of half-finishing.
 
 ### Prebuilt binaries
 
 Grab the latest archive from
-[Releases](https://github.com/AlbertoBarrago/telemaco/releases):
+[Releases](https://github.com/AlbertoBarrago/telemaco/releases). Archives are
+built for `x86_64-linux`, `aarch64-linux`, `aarch64-macos` and
+`x86_64-macos`:
 
 ```bash
-# Linux x86_64
 curl -LO https://github.com/AlbertoBarrago/telemaco/releases/latest/download/telemaco-x86_64-linux.tar.gz
 tar xzf telemaco-x86_64-linux.tar.gz
 ./telemaco fetch https://example.com --eval "document.title"
 ```
 
-Release archives contain the single `telemaco` binary.
+Each archive contains the single `telemaco` binary.
 
 | Archive suffix        | Rendering | Stealth transport |
 |-----------------------|-----------|-------------------|
@@ -152,6 +143,8 @@ Release archives contain the single `telemaco` binary.
 | `-stealth`            | Yes       | Yes               |
 | `-no-render`          | No        | No                |
 | `-no-render-stealth`  | No        | Yes               |
+
+There are no Windows release archives; build from source there.
 
 ### Build from source
 
@@ -172,10 +165,10 @@ CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --no-default-fe
 CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --no-default-features --features stealth
 ```
 
-Requires Rust 1.75+ ([rustup.rs](https://rustup.rs)). The first build compiles
-V8 from source: about 5 minutes and a few GB of disk, cached afterwards. The
-stealth build also compiles BoringSSL, which needs CMake and Clang. On
-Ubuntu/Debian:
+Requires Rust 1.85+ ([rustup.rs](https://rustup.rs)). The first build
+compiles V8 from source: about 5 minutes and a few GB of disk, cached
+afterwards. The stealth build also compiles BoringSSL, which needs CMake and
+Clang. On Ubuntu/Debian:
 
 ```bash
 sudo apt-get install build-essential cmake clang libclang-dev llvm-dev
@@ -183,41 +176,30 @@ sudo apt-get install build-essential cmake clang libclang-dev llvm-dev
 
 ### Crates.io
 
-Every crate is published to [crates.io](https://crates.io), so you can use
-Telemaco as a library in your own Rust project or build its CLI from the
-registry:
+The crates are published to [crates.io](https://crates.io), so you can use
+Telemaco as a library or build the CLI from the registry:
 
 ```bash
-# The headless browser, ready to drive from Rust
-cargo add telemaco
-```
-
-Install the CLI as a binary from crates.io too:
-
-```bash
-cargo install telemaco-cli --features render
+cargo add telemaco                          # the engine, driven from Rust
+cargo install telemaco-cli --features render # the CLI
 ```
 
 The publishable set: `telemaco` (embeddable API), `telemaco-cli`, and the
 workspace crates `telemaco-dom`, `telemaco-net`, `telemaco-js`,
 `telemaco-browser`, `telemaco-mcp`, `telemaco-render`.
 
-The two libraries that define how a page renders are Telemaco-owned forks,
-published and maintained here rather than pinned to upstream schedules:
+Layout and text come from two Telemaco-maintained forks, published under the
+upstream lib names (`taffy` / `cosmic_text`) at exactly the version Telemaco
+builds against:
 
 - [`mentore`](https://crates.io/crates/mentore): the layout engine, a fork of
   Taffy.
 - [`athena-text`](https://crates.io/crates/athena-text): the text engine, a
   fork of cosmic-text (including the CSS line-breaking work).
 
-Both publish exactly the version Telemaco builds against, under the same lib
-names (`taffy` / `cosmic_text`), so the crate source is unchanged: the layout
-and text output never move underneath a release.
-
-API reference: the workspace crates that embed V8 (telemaco, telemaco-js,
-telemaco-browser, telemaco-mcp) cannot be rendered by docs.rs
-because building them requires compiling V8. Generate their rustdoc locally
-with `cargo doc --no-deps --open`.
+The crates that embed V8 (`telemaco`, `telemaco-js`, `telemaco-browser`,
+`telemaco-mcp`) cannot be rendered by docs.rs, because building them requires
+compiling V8. Generate their API docs locally with `cargo doc --no-deps --open`.
 
 ## Quick start
 
@@ -227,33 +209,47 @@ with `cargo doc --no-deps --open`.
 # Page title
 telemaco fetch https://example.com --eval "document.title"
 
-# Extract all links
+# Rendered HTML (the default dump)
+telemaco fetch https://news.ycombinator.com
+
+# Readable text or Markdown
+telemaco fetch https://example.com --dump text
+telemaco fetch https://example.com --dump markdown
+
+# Only the Markdown blocks around some keywords
+telemaco fetch https://example.com --dump markdown --focus pricing --focus plans
+
+# All links
 telemaco fetch https://example.com --dump links
 
-# Render JavaScript and dump HTML
-telemaco fetch https://news.ycombinator.com --dump html
+# Every sub-resource URL the page references (NDJSON)
+telemaco fetch https://example.com --dump assets
+
+# Raw response body, binary-safe, bypassing the JS/DOM layer
+telemaco fetch https://picsum.photos/200/300 --dump original > photo.jpg
 
 # Write output to a file
 telemaco fetch https://example.com --dump text --output page.txt
 
-# Stream the raw response body verbatim (binary-safe, bypasses the JS/DOM layer)
-telemaco fetch https://picsum.photos/200/300 --dump original > photo.jpg
-
-# List every sub-resource URL the page would fetch (NDJSON)
-telemaco fetch https://example.com --dump assets
-
-# Fetch through an HTTP or SOCKS proxy
+# Through an HTTP or SOCKS proxy
 telemaco --proxy socks5://127.0.0.1:1080 fetch https://example.com --dump text
 
 # Wait for dynamic content, bound navigation time
 telemaco fetch https://example.com --wait-until networkidle0 --timeout 10
 
-# Capture the settled page as PNG
+# Capture the settled page as PNG (render-enabled build)
 telemaco fetch https://example.com --screenshot page.png
 ```
 
-Dump modes: `assets`, `html`, `text`, `links`, `markdown`, `original`,
-`cookies`.
+### Many URLs
+
+`--file` reads newline-delimited URLs (`-` for stdin) and fetches each raw,
+printing one JSON status line per URL. Batch mode only supports
+`--dump original`; for rendered output run one `fetch` per URL.
+
+```bash
+telemaco fetch --file urls.txt --concurrency 8 --output results.ndjson
+```
 
 ### Localhost and LAN dev servers
 
@@ -263,8 +259,6 @@ For local testing pass `--allow-private-network` or set
 
 ```bash
 telemaco fetch http://127.0.0.1:3000 --allow-private-network --dump text
-
-# Works on any subcommand, for example the MCP server for local automation:
 telemaco mcp --allow-private-network
 ```
 
@@ -274,17 +268,21 @@ The full allow/deny rules (including DNS-resolution-time checks) are in
 ## MCP (Model Context Protocol)
 
 Telemaco ships an MCP server that exposes browser automation tools to AI
-agents (Claude Desktop, Cursor, and other MCP clients).
+agents (Claude Desktop, Cursor and other MCP clients).
 
 ```bash
 telemaco mcp                      # stdio, for clients that launch a subprocess
 telemaco mcp --http --port 8080   # HTTP, endpoint: http://127.0.0.1:8080/mcp
 ```
 
-The server answers `initialize` with plain capabilities. Add `--agent-directives`
-to have it also tell the agent, on connect, that Telemaco is how it should reach
-the web; `telemaco install` adds this flag when you accept it, so a server you
-wire up by hand stays neutral.
+`--http` binds `127.0.0.1:3000` unless `--host`/`--port` say otherwise, and
+has no built-in auth. `--max-chars N` overrides the character cap for
+`browser_markdown` and `browser_snapshot` (`0` means unlimited).
+
+The server answers `initialize` with plain capabilities. Add
+`--agent-directives` to have it also tell the agent, on connect, that
+Telemaco is how it should reach the web; `telemaco install` adds this flag
+when you accept it, so a server you wire up by hand stays neutral.
 
 Claude Desktop config:
 
@@ -296,12 +294,25 @@ Claude Desktop config:
 }
 ```
 
-Tools: `browser_navigate`, `browser_snapshot`, `browser_screenshot`,
-`browser_pdf`, `browser_click`, `browser_fill`, `browser_type`,
-`browser_press_key`, `browser_select_option`, `browser_evaluate`,
-`browser_wait_for`, `browser_network_requests`, `browser_console_messages`,
-`browser_close`. Render-enabled builds expose `browser_screenshot` and
-`browser_pdf`.
+Tools:
+
+- Navigation and tabs: `browser_navigate`, `browser_back`, `browser_forward`,
+  `browser_reload`, `browser_close`, `browser_tab_new`, `browser_tab_list`,
+  `browser_tab_switch`, `browser_tab_close`
+- Reading: `browser_snapshot`, `browser_markdown`, `browser_links`,
+  `browser_extract`, `browser_interactive_elements`, `browser_detect_forms`,
+  `browser_get_attribute`, `browser_count`, `browser_search`
+- Interaction: `browser_click`, `browser_fill`, `browser_fill_form`,
+  `browser_type`, `browser_press_key`, `browser_select_option`,
+  `browser_scroll`
+- Waiting and scripting: `browser_wait_for`, `browser_wait_for_text`,
+  `browser_evaluate`
+- State: `browser_get_cookies`, `browser_set_cookie`, `browser_clear_cookies`,
+  `browser_storage_state`, `browser_set_storage_state`
+- Diagnostics: `browser_network_requests`, `browser_console_messages`
+- Render-enabled builds only: `browser_screenshot`, `browser_pdf`
+
+See [docs/Use-the-MCP-server.md](docs/Use-the-MCP-server.md) for arguments.
 
 ## Agent setup (`telemaco install`)
 
@@ -319,11 +330,11 @@ one at a time.
 telemaco install                                     # interactive, detects installed agents
 telemaco install --yes                               # non-interactive, accepts the defaults
 telemaco install --folder ./my-project               # configure one project directory
-telemaco install --folder ~/alt-home -l global        # use that folder as home for a global install
+telemaco install --folder ~/alt-home -l global       # use that folder as home for a global install
 telemaco install --target claude,cursor              # pick agents explicitly
 telemaco install --dry-run                           # show what would change, write nothing
-telemaco uninstall                                    # remove everything a global install added
-telemaco uninstall --folder ./my-project              # remove it from one project directory
+telemaco uninstall                                   # remove everything a global install added
+telemaco uninstall --folder ./my-project             # remove it from one project directory
 ```
 
 Supported: Claude Code, Cursor, OpenAI Codex CLI, Gemini CLI, Google
@@ -360,38 +371,61 @@ rewritten as strict JSON, and the note says so.
 
 ## CLI reference
 
+Subcommands: `fetch`, `mcp`, `install`, `uninstall`, `update`. Running
+`telemaco` with no subcommand prints help.
+
+### Global flags
+
+Valid before or after the subcommand.
+
+| Flag | Description |
+|------|-------------|
+| `--proxy <URL>` | HTTP or SOCKS5 proxy (`fetch`, `mcp`) |
+| `--stealth` | Anti-detection mode (`fetch`, `mcp`) |
+| `--allow-private-network` | Permit loopback, RFC1918 and link-local targets |
+| `--obey-robots` | Respect robots.txt before navigating (`fetch`) |
+| `--config <PATH>` | TOML config file; must exist when given |
+| `-v`, `--verbose` | Info logging |
+| `--v8-flags <FLAGS>` | Raw V8 flags, applied once at startup |
+
 ### `telemaco fetch <URL>`
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--dump` | `text` | `assets`, `html`, `text`, `links`, `markdown`, `original`, `cookies` |
-| `--eval` | — | JS expression evaluated on the page |
-| `--wait-until` | `load` | `load`, `domcontentloaded`, `networkidle0` |
+| `--dump` | `html` | `html`, `text`, `markdown`, `links`, `assets`, `original`, `cookies` |
+| `-e`, `--eval` | | JS expression evaluated on the page |
+| `--selector` | | Wait for a CSS selector before reading the page |
+| `--wait-until` | `load` | `load`, `domcontentloaded`, `networkidle0`, `networkidle2` |
 | `--timeout` | `30` | Maximum navigation time in seconds |
 | `--wait` | adaptive, up to `5` | Post-load settling; an explicit value is a fixed delay in seconds |
-| `--selector` | — | Wait for a CSS selector |
-| `-s`, `--screenshot` | — | Write a PNG screenshot (render-enabled build) |
-| `--stealth` | off | Anti-detection mode |
-| `--output` | — | Write dump or eval output to a file |
-| `--proxy` | — | Inherited global HTTP/SOCKS5 proxy URL |
+| `--focus` | | Keep only Markdown blocks around this keyword (repeatable) |
+| `--focus-context` | `1` | Blocks kept around each `--focus` hit |
+| `-s`, `--screenshot` | | Write a PNG screenshot (render-enabled build, single URL) |
+| `-o`, `--output` | | Write dump or eval output to a file |
+| `--user-agent` | | Override the User-Agent |
+| `--storage-dir` | | Directory for persistent cookies and storage |
+| `--file` | | Batch mode: newline-delimited URLs, `-` for stdin |
+| `--concurrency` | `1` | Concurrent fetches in batch mode |
+| `-q`, `--quiet` | | Suppress info logging |
 
-Global flags `--proxy`, `--stealth`, and `--allow-private-network` are valid
-before or after the subcommand and apply to `fetch` and `mcp`.
+The full reference, including `mcp`, is in
+[docs/CLI-reference.md](docs/CLI-reference.md).
 
 ## Stealth mode
 
-Build with `--features render,stealth`, then enable at runtime with the global
+Build with `--features render,stealth` (or install the `-stealth` archive or
+`telemaco-stealth` formula), then enable it at runtime with the global
 `--stealth` flag. Stealth adds the wreq/BoringSSL transport, per-session
 fingerprint randomization (GPU, screen, canvas, audio, battery), realistic
 `navigator.userAgentData` (high-entropy values), trusted dispatched events,
-and a tracker blocklist. The stealth build retains the complete rendering
-surface: screenshot, PDF, and MCP all keep working.
+and a tracker blocklist. Screenshots, PDF and MCP keep working in the stealth
+build.
 
 ## Architecture
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `mcp`, `install`, `update` |
+| `telemaco-cli` | CLI: `fetch`, `mcp`, `install`, `uninstall`, `update` |
 | `telemaco-js` | V8/`deno_core` runtime and DOM ops bridge |
 | `telemaco-dom` | DOM tree |
 | `telemaco-net` | HTTP client, stealth transport, cookie jar, robots cache, tracker blocklist |
@@ -419,7 +453,38 @@ TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
 
 It serves its own fixtures on a port picked at runtime, so it is deterministic,
 offline, and cannot collide with a server already running. Rendering changes
-additionally go through `render-repros/run.sh`, which draws 64 fixtures.
+also go through `render-repros/run.sh`.
+
+## Removed
+
+Removed after the 0.2.6 release, which is the last one to ship them. Telemaco
+is used through `fetch`, the MCP server and the Rust library; these parts
+served other uses and cost build and CI time.
+
+| Removed | Replacement or reason |
+|---------|-----------------------|
+| CDP server and `telemaco serve` (Puppeteer/Playwright) | Use the MCP server or the `telemaco` crate (#25) |
+| `--port`, `--user-agent`, `--storage-dir` as top-level flags | They configured the CDP server; `fetch` keeps its own `--user-agent` and `--storage-dir` (#25) |
+| Docker image and its workflow | It packaged the CDP server; install the binary instead (#25) |
+| `tools/live-view.mjs` | A CDP viewer, gone with the CDP server (#25) |
+| `telemaco remote` and the `telemaco-remote` crate (managing another machine over Tailcat) | No replacement (#27) |
+| Build without paint in `telemaco-render` | Paint is mandatory; use the `-no-render` CLI builds to skip rendering (#27) |
+| Windows release archives | Build from source on Windows; `telemaco update` says so (#27) |
+| Self-hosted rustdoc in `api/` and the Docs workflow | `cargo doc --no-deps --open` (#27) |
+| `telemaco scrape` and the `telemaco-worker` binary | `fetch --file` for raw batch fetches, one `fetch` per URL for rendered output (#28) |
+| `TELEMACO_PROXY`, `TELEMACO_STEALTH`, `TELEMACO_OBEY_ROBOTS` | No longer read; use `--proxy`, `--stealth`, `--obey-robots` (#28) |
+| Engine APIs only the CDP server used (binding calls, runtime console and exception events, JS network events, `BrowserContext::allow_file_access`) | No remaining caller (#28) |
+| `vendor/` copies of taffy and cosmic-text | Unused since the move to `mentore` and `athena-text` (#22) |
+
+Effect on a render+stealth build (`CARGO_BUILD_JOBS=2`), measured in #25 to
+#28:
+
+| | before | after |
+|---|---:|---:|
+| clean build | 277s | 247s |
+| incremental, after a change to `bootstrap.js` | 63s | 37s |
+| incremental, after a change to `paint.rs` | 79s | 55s |
+| incremental, after a change to `telemaco-mcp/src/lib.rs` | 32s | 20s |
 
 ## Proxies for production
 
@@ -432,4 +497,6 @@ through the proxy username. Route Telemaco through it with the global
 
 ## License
 
-Telemaco is licensed under the [Apache License, Version 2.0](LICENSE).
+Telemaco is licensed under the [Apache License, Version 2.0](LICENSE). It is
+a derivative work of [Obscura](https://github.com/h4ckf0r0day/obscura), also
+Apache-2.0; [`NOTICE`](NOTICE) carries the attribution.
