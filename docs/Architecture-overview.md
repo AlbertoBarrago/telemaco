@@ -1,7 +1,7 @@
 Telemaco is a workspace of eight crates.
 
 ```
-telemaco-cli       CLI entry point. fetch, scrape, mcp, install, update.
+telemaco-cli       CLI entry point. fetch, mcp, install, update.
 telemaco-browser   Page type, navigation, lifecycle events.
 telemaco-js        V8 runtime via deno_core. bootstrap.js + Rust ops.
 telemaco-dom       DOM tree implementation.
@@ -101,7 +101,7 @@ Navigation (`navigate_with_wait`, `fetch --wait-until`) blocks until the request
 
 ## Stealth
 
-`--stealth` swaps the default `reqwest` client for `telemaco-net/wreq_client.rs`, which presents a real browser's TLS ClientHello, ALPN, and cipher order (a consistent Chrome fingerprint, not a randomized one) so the TLS layer matches the User-Agent and JS surfaces. It also applies the bundled tracker blocklist before any request leaves the process. Scripted `fetch()`/XHR go through the same stealth client, so subresource requests carry the same fingerprint as the navigation. `--stealth` is a global CLI flag that applies to `fetch`, `scrape`, and `mcp`.
+`--stealth` swaps the default `reqwest` client for `telemaco-net/wreq_client.rs`, which presents a real browser's TLS ClientHello, ALPN, and cipher order (a consistent Chrome fingerprint, not a randomized one) so the TLS layer matches the User-Agent and JS surfaces. It also applies the bundled tracker blocklist before any request leaves the process. Scripted `fetch()`/XHR go through the same stealth client, so subresource requests carry the same fingerprint as the navigation. `--stealth` is a global CLI flag that applies to `fetch` and `mcp`.
 
 ## Workspace conventions
 

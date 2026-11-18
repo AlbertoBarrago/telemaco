@@ -5,19 +5,18 @@ see `README.md` and `docs/`.
 
 Telemaco is a headless browser engine in Rust: it runs real JavaScript through
 V8, keeps a real DOM, and renders natively. Use it from the shell with
-`fetch` and `scrape`, from an AI agent through the MCP server, or as a Rust
+`fetch`, from an AI agent through the MCP server, or as a Rust
 library.
 
 ---
 
 ## 1. Getting the binaries
 
-A build produces two binaries in `target/release/`:
+A build produces one binary in `target/release/`:
 
 | Binary | What it does |
 |---|---|
-| `telemaco` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update` |
-| `telemaco-worker` | Worker for parallel scraping; must sit next to `telemaco` for `scrape` |
+| `telemaco` | CLI: `fetch`, `mcp`, `install`, `update` |
 
 Which features a binary has depends on how it was built. `--features render`
 gives you screenshots and PDF; `--features render,stealth` adds TLS
@@ -59,16 +58,14 @@ Re-running it changes nothing once telemaco is registered.
 ### 1.2 Updating
 
 ```bash
-telemaco update            # replace the binaries with the latest release
+telemaco update            # replace the binary with the latest release
 telemaco update --check    # report only; exit 1 means an update is available
 ```
 
 The update keeps the build variant you installed, so a stealth install stays a
-stealth install rather than quietly becoming the plain one. Both `telemaco` and
-`telemaco-worker` are replaced together, since a mismatched pair breaks
-`scrape`. The download is verified by running it before anything is replaced,
-and the replacement itself is a rename, so a failure leaves the working install
-untouched.
+stealth install rather than quietly becoming the plain one. The download is
+verified by running it before anything is replaced, and the replacement itself
+is a rename, so a failure leaves the working install untouched.
 
 Run interactively, telemaco checks once a day whether a newer release exists
 and says so. It never does this when stderr is not a terminal, which covers
@@ -164,8 +161,8 @@ cat urls.txt | $T fetch --file - --concurrency 5
 # {"url":"...","ok":true,"status":200,"content_type":"text/html","bytes":446,"elapsed_ms":27}
 ```
 
-For rendered or DOM output in batch, use `scrape` (§5). `--screenshot` is not
-available in batch mode.
+Batch mode returns raw responses only: for rendered or DOM output, or a
+screenshot, run `fetch` once per URL.
 
 **Multi-statement JavaScript:** an `--eval` that starts with `const` and has
 more than one statement returns `null`, because V8 gives `const` an empty
@@ -195,42 +192,7 @@ $T mcp --allow-private-network
 Without the flag the error reads: `Access to private/internal IP address ... is
 not allowed`.
 
-## 5. Parallel scraping: `scrape`
-
-```bash
-# Run JavaScript across several URLs at once, as JSON
-$T scrape https://example.com https://news.ycombinator.com \
-  --concurrency 25 \
-  --eval "document.querySelector('h1')?.textContent ?? document.title" \
-  --format json
-```
-
-Typical output:
-
-```json
-{
-  "total_urls": 2,
-  "concurrency": 2,
-  "total_time_ms": 1372,
-  "avg_time_ms": 686.0,
-  "results": [
-    {
-      "url": "https://example.com",
-      "title": "Example Domain",
-      "eval": "Example Domain",
-      "time_ms": 686,
-      "worker": 0
-    }
-  ]
-}
-```
-
-`scrape` does **not** read stdin and does not accept `-`: pass every URL as an
-argument. For raw batch input from stdin use `fetch --file -` (§3).
-
-It needs `telemaco-worker` in the same directory as `telemaco`, or on `PATH`.
-
-## 6. MCP, for Claude Desktop, Cursor, and others
+## 5. MCP, for Claude Desktop, Cursor, and others
 
 ```bash
 $T mcp                      # stdio; the client launches the process
@@ -275,16 +237,16 @@ printf '%s\n%s\n%s\n' \
 # -> 37
 ```
 
-## 7. Global flags and environment variables
+## 6. Global flags and environment variables
 
-These work before or after the subcommand, on `fetch`, `scrape`, and `mcp`:
+These work before or after the subcommand, on `fetch` and `mcp`:
 
 | Flag | Effect |
 |---|---|
 | `--proxy <URL>` | HTTP or SOCKS5 proxy, e.g. `socks5://user:pass@host:1080` |
 | `--stealth` | Consistent browser fingerprint and tracker blocking; with a stealth build, TLS impersonation too |
 | `--allow-private-network` | Permit loopback, RFC1918, and link-local addresses, for local development |
-| `--obey-robots` | Respect robots.txt before navigating, on fetch and scrape |
+| `--obey-robots` | Respect robots.txt before navigating, on fetch |
 | `--user-agent <UA>` | Override the User-Agent |
 | `--storage-dir <DIR>` | Cookies and localStorage that survive between runs |
 | `--config <PATH>` | TOML config file; must exist if given |
@@ -300,12 +262,11 @@ Environment variables worth knowing, with the full list in
 | `TELEMACO_SCRIPT_DEADLINE_MS` | 30000 | Budget for the page's script phase |
 | `TELEMACO_ALLOW_PRIVATE_NETWORK` | off | Same as the SSRF flag |
 | `TELEMACO_TIMEZONE` | Europe/Berlin | Pin the timezone, to match your proxy |
-| `TELEMACO_PROXY` | — | Default proxy for `scrape` workers |
 | `TELEMACO_MCP_MAX_CHARS` | 4000 | Characters per page from `browser_markdown` |
 
-## 8. Testing
+## 7. Testing
 
-### 8.1 CLI smoke battery, offline, about a minute
+### 7.1 CLI smoke battery, offline, about a minute
 
 End-to-end checks against a local fixture: no external network, no site to
 depend on. Paste the whole block into a terminal; each check prints `PASS` or
@@ -378,23 +339,18 @@ $T fetch "$U/shot.png" --allow-private-network -q --dump original > "$D/copy.png
 N=$(cat "$D/urls.txt" | $T fetch --file - --allow-private-network 2>/dev/null | grep -c '"ok":true')
 [ "$N" = "2" ] && ok "fetch --file with 2 URLs" || bad "batch mode"
 
-# 9) parallel scrape
-$T scrape "$U/index.html" "$U/page2.html" --allow-private-network --concurrency 2 \
-  --eval "document.title" --format json 2>/dev/null | grep -q '"total_urls": 2' \
-  && ok "parallel scrape" || bad "scrape"
-
-# 10) --obey-robots blocks a Disallowed path
+# 9) --obey-robots blocks a Disallowed path
 $T fetch "$U/private/secret.html" --allow-private-network --obey-robots 2>&1 \
   | grep -q "Blocked by robots.txt" && ok "--obey-robots" || bad "obey-robots"
 
-# 11) --storage-dir: the cookie survives between runs
+# 10) --storage-dir: the cookie survives between runs
 rm -rf "$D/store"
 $T fetch "$U/index.html" --allow-private-network -q --storage-dir "$D/store" >/dev/null 2>&1
 $T fetch "$U/page2.html" --allow-private-network -q --storage-dir "$D/store" \
   --eval "document.cookie" | grep -q "tm_cookie=123" \
   && ok "--storage-dir persists cookies" || bad "storage-dir"
 
-# 12) MCP: stdio handshake and tool list
+# 11) MCP: stdio handshake and tool list
 printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"1.0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
@@ -410,7 +366,7 @@ The battery binds fixed ports. If a stale server already holds one, the
 requests reach the wrong process and most checks fail for a reason that has
 nothing to do with the code, so check the port before trusting a red run.
 
-### 8.2 Rust suite
+### 7.2 Rust suite
 
 **Use `cargo nextest`, not `cargo test`**: the engine holds a single V8 isolate
 per process, so the runtime tests fail under `cargo test`. Nextest runs each
@@ -426,10 +382,10 @@ cargo nextest run --release --features render --no-fail-fast
 cargo nextest run --release --features render -p telemaco-cli
 ```
 
-### 8.3 Acceptance suite
+### 7.3 Acceptance suite
 
-The behavioral gate is the suite in `acceptance/`: 45 stages that must stay at
-45/45.
+The behavioral gate is the suite in `acceptance/`: 44 stages that must stay at
+44/44.
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -439,7 +395,7 @@ It serves its own fixtures on a port picked at runtime, so it is deterministic,
 offline, and cannot collide with a server already running. Details, and how to
 add a stage, are in [acceptance/README.md](acceptance/README.md).
 
-## 9. Common problems
+## 8. Common problems
 
 | Symptom | Cause and fix |
 |---|---|
@@ -447,9 +403,7 @@ add a stage, are in [acceptance/README.md](acceptance/README.md).
 | Fetching `localhost` is refused | The SSRF gate: add `--allow-private-network` (§4) |
 | `--screenshot` unavailable | Needs a build with `--features render` (§2) |
 | Stealth looks weak | The binary was built without the `stealth` feature: rebuild with `--features render,stealth`, which needs cmake |
-| `telemaco mcp` seems to hang | It does not: a stdio server waits for JSON-RPC on stdin. Launch it from an MCP client, or pipe a request in (§6) |
-| `scrape` will not start | `telemaco-worker` is missing next to the `telemaco` binary |
-| `scrape -` or piping into `scrape` fails | `scrape` does not read stdin: pass URLs as arguments, or use `fetch --file -` (§3) |
+| `telemaco mcp` seems to hang | It does not: a stdio server waits for JSON-RPC on stdin. Launch it from an MCP client, or pipe a request in (§5) |
 | `--v8-flags` rejected after the subcommand | It is not global: put it first, e.g. `$T --v8-flags "..." fetch ...` (§3) |
 | `--selector` does not seem to filter | Working as intended: it waits for the element, then dumps the whole page (§3) |
 | The first build takes forever | Expected: it compiles V8, around five minutes. Later builds take seconds; use `-p` to narrow the scope |

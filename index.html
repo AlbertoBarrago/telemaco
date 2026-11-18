@@ -503,8 +503,8 @@
       </div>
       <div class="feature">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-6 4 3 5-7"/></svg></div>
-        <h3>Parallel scraping</h3>
-        <p><code>telemaco scrape</code> fans out across workers with configurable concurrency, proxy inheritance, and JSON output for pipelines.</p>
+        <h3>Batch fetches</h3>
+        <p><code>telemaco fetch --file</code> fetches a list of URLs concurrently and prints one JSON line per URL, ready for pipelines.</p>
       </div>
     </div>
   </div>
@@ -571,7 +571,7 @@
     <div class="sec-head">
       <div class="kicker">Quick start</div>
       <h2>Drive it from the shell</h2>
-      <p>One command per page: evaluate, extract, screenshot, or scrape in parallel.</p>
+      <p>One command per page: evaluate, extract, screenshot, or batch-fetch a list.</p>
     </div>
     <div class="tabs">
       <button class="tab active" data-tab="cli">CLI</button>
@@ -587,8 +587,8 @@
         <span class="cmd">$</span> telemaco fetch https://news.ycombinator.com --dump html<br /><br />
         <span class="cmt"># Screenshot the settled page</span><br />
         <span class="cmd">$</span> telemaco fetch https://example.com --screenshot page.png<br /><br />
-        <span class="cmt"># Scrape many URLs in parallel</span><br />
-        <span class="cmd">$</span> telemaco scrape url1 url2 url3 --concurrency 25 --format json<br /><br />
+        <span class="cmt"># Fetch many URLs concurrently, one JSON line each</span><br />
+        <span class="cmd">$</span> telemaco fetch --file urls.txt --concurrency 25<br /><br />
         <span class="cmt"># Keep telemaco current</span><br />
         <span class="cmd">$</span> telemaco update --check
       </div>
@@ -708,8 +708,8 @@
       '<span class="out">1. Show HN: ...</span><br/><span class="out">2. Ask HN: ...</span><br/><span class="out">3. Launch HN: ...</span>',
     'telemaco fetch https://example.com --dump text':
       '<span class="out">Example Domain</span><br/><span class="dim">This domain is for use in illustrative examples...</span>',
-    'telemaco scrape url1 url2 url3 --concurrency 25 --format json':
-      '<span class="out">[{"url":"url1","title":"..."},{"url":"url2","title":"..."}]</span>',
+    'telemaco fetch --file urls.txt --concurrency 25':
+      '<span class="out">{"url":"...","ok":true,"status":200,"bytes":446}</span>',
     'telemaco --version':
       '<span class="out">telemaco 0.1.3</span>',
     'telemaco install':

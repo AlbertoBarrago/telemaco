@@ -34,25 +34,14 @@ telemaco --v8-flags "--max-old-space-size=2048" mcp --http
 
 Flags you pass are appended after the defaults, and V8 uses the last value for a repeated flag, so your `--max-old-space-size` wins while the memory-tuning defaults stay in effect. Lower for memory-constrained hosts, raise for heavy SPAs.
 
-## Parallel scrape
+## Batch fetches
 
-`telemaco scrape` fans out a list of URLs across worker processes:
-
-```bash
-telemaco scrape \
-  --concurrency 20 \
-  --format json \
-  --timeout 60 \
-  url1 url2 url3 ...
-```
-
-Reads URLs from stdin:
+`telemaco fetch --file` fetches a list of URLs concurrently and prints one JSON line per URL. It returns raw responses only: run `fetch` once per URL for rendered output or screenshots.
 
 ```bash
-cat urls.txt | telemaco scrape --concurrency 20 -
+telemaco fetch --file urls.txt --concurrency 20
+cat urls.txt | telemaco fetch --file - --concurrency 20
 ```
-
-Requires `telemaco-worker` next to `telemaco` in `PATH`.
 
 ## Resource limits
 

@@ -2,11 +2,10 @@
 
 ```bash
 telemaco fetch https://example.com --stealth
-telemaco scrape url1 url2 --stealth
 telemaco mcp --stealth
 ```
 
-`--stealth` is a global flag, so it works before or after the subcommand and applies to `fetch`, `scrape`, and `mcp`. In a `scrape` run each worker inherits it.
+`--stealth` is a global flag, so it works before or after the subcommand and applies to `fetch` and `mcp`.
 
 What `--stealth` changes:
 

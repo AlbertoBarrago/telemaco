@@ -44,7 +44,7 @@ HTTP headers, user agent, navigator, and WebGL surfaces; masks
 tracker-domain list.
 
 Enable stealth at runtime with the global `--stealth` flag. It applies to
-`fetch`, `scrape`, and `mcp`, before or after the subcommand:
+`fetch` and `mcp`, before or after the subcommand:
 
 ```bash
 telemaco --stealth fetch https://example.com --screenshot page.png
@@ -70,8 +70,8 @@ fixed delay of `N` seconds. `--timeout` is also measured in seconds and bounds
 navigation separately.
 
 Use `--dump original` for a binary or raw HTTP response that should bypass DOM
-and JavaScript processing. Use `scrape` for many URLs when the requested output
-does not require one screenshot per URL.
+and JavaScript processing. Use `fetch --file` for many URLs when raw responses
+are enough; run `fetch` once per URL for rendered output or screenshots.
 
 ## PDF output
 
