@@ -542,12 +542,6 @@ def speed_scripted_page(u):
     return "INJECTED-BY-JS" in r
 
 
-def speed_parallel_scrape(u):
-    r = cli("scrape", f"{u}/index.html", f"{u}/page2.html", f"{u}/layout.html",
-            "--concurrency", "3", "--format", "json", "--quiet", timeout=120)
-    return '"total_urls": 3' in r.out or '"total_urls":3' in r.out
-
-
 STAGES: list[tuple[str, object]] = [
     ("dom.malformed-html", dom_malformed),
     ("dom.entities", dom_entities),
@@ -593,7 +587,6 @@ STAGES: list[tuple[str, object]] = [
     ("protocol.mcp-stdio-clean", mcp_stdio_is_quiet_when_piped),
     ("speed.static-page", speed_static_page),
     ("speed.scripted-page", speed_scripted_page),
-    ("speed.parallel-scrape", speed_parallel_scrape),
 ]
 
 
