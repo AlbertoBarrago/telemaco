@@ -134,7 +134,7 @@ if [[ $ASSUME_YES -eq 0 ]]; then
   printf 'Push the release? [y/N] '
   read -r reply
   [[ "$reply" == "y" || "$reply" == "Y" ]] || {
-    note "stopped. The working tree still holds the bump; `git checkout .` discards it."
+    note 'stopped. The working tree still holds the bump; `git checkout .` discards it.'
     exit 1
   }
 fi
