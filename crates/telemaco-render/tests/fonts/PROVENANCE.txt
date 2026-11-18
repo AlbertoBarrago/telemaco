@@ -12,3 +12,16 @@ from the OFL reserved name to "Telemaco VF Test" / "TelemacoVFTest" variants.
 The original copyright attribution remains in the font's copyright record.
 
 The WOFF2 is stored as base64 text so repository edits remain reviewable.
+
+NotoSansArabic.ttf
+
+Source: the cosmic-text test fonts, formerly kept in vendor/cosmic-text/fonts/
+Upstream: https://github.com/notofonts/arabic
+Upstream version recorded in the font: Version 2.004
+Copyright 2015-2020 Google LLC. All Rights Reserved.
+License: SIL Open Font License 1.1 (see LICENSE-NotoSans-OFL-1.1.txt, the
+notice that shipped with the font in cosmic-text)
+SHA-256: ee489b994b3e62def9874c918145e32b133b625abaf98cec60502bdb40102c56
+
+Stored unmodified. The inline.rs tests load it as the static primary face
+ahead of a variable fallback (isolated_fallback_engine).

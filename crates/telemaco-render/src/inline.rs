@@ -4373,7 +4373,7 @@ mod tests {
     {
         let mut engine = TextEngine::new_with_web_fonts(&[
             WebFont {
-                data: include_bytes!("../../../vendor/cosmic-text/fonts/NotoSansArabic.ttf")
+                data: include_bytes!("../tests/fonts/NotoSansArabic.ttf")
                     .to_vec(),
                 family: Some("Static Primary".to_string()),
                 weight: Some((400, 400)),
