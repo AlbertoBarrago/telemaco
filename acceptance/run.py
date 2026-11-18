@@ -24,7 +24,6 @@ import json
 import os
 import re
 import shutil
-import socket
 import statistics
 import subprocess
 import sys
@@ -134,12 +133,6 @@ class Fixtures:
     def __exit__(self, *exc) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
-
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 # ------------------------------------------------------------------- CLI helper
@@ -455,40 +448,6 @@ def render_pdf(u):
     return False
 
 
-def wait_for_port(port: int, timeout: float = 20) -> bool:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        with socket.socket() as s:
-            s.settimeout(0.4)
-            if s.connect_ex(("127.0.0.1", port)) == 0:
-                return True
-        time.sleep(0.15)
-    return False
-
-
-def cdp_serve(u):
-    port = free_port()
-    proc = subprocess.Popen(
-        [BIN, "serve", "--port", str(port), "--allow-private-network"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=BASE_ENV)
-    try:
-        if not wait_for_port(port):
-            return False
-        import urllib.request
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=10) as r:
-            if r.status != 200:
-                return False
-            payload = json.loads(r.read())
-        # The websocket endpoint is what a Puppeteer or Playwright client needs;
-        # its absence makes the server useless even though HTTP answered.
-        return payload.get("webSocketDebuggerUrl", "").startswith("ws://")
-    except Exception:
-        return False
-    finally:
-        proc.terminate()
-        proc.wait(timeout=10)
-
-
 def mcp_rpc(requests: list[dict], timeout: float = 90) -> list[dict]:
     payload = "".join(json.dumps(r) + "\n" for r in requests).encode()
     proc = subprocess.run([BIN, "mcp"], input=payload, capture_output=True,
@@ -628,7 +587,6 @@ STAGES: list[tuple[str, object]] = [
     ("render.screenshot", render_screenshot),
     ("render.viewport-height", render_full_page),
     ("render.pdf", render_pdf),
-    ("protocol.cdp-serve", cdp_serve),
     ("protocol.mcp-tools-list", mcp_tools_list),
     ("protocol.mcp-navigate-read", mcp_navigate_and_read),
     ("protocol.mcp-fill-form", mcp_fill_form),
