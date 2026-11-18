@@ -70,7 +70,6 @@ pub struct BrowserState {
     tab_counter: u32,
     context: Arc<BrowserContext>,
     user_agent: Option<String>,
-    console_messages: Vec<String>,
     /// Element-ref table from the last `browser_snapshot` on the ACTIVE
     /// tab. Agents click / fill / type by `ref` (e.g. `"e3"`) instead of
     /// guessing a CSS selector. Refs are stable within a snapshot; the
@@ -106,7 +105,6 @@ impl BrowserState {
             tab_counter: 0,
             context: Arc::new(BrowserContext::with_options("mcp".to_string(), proxy, stealth)),
             user_agent,
-            console_messages: Vec::new(),
             interactive_refs: HashMap::new(),
             agent_directives: false,
             limits,
@@ -1331,13 +1329,16 @@ fn tool_network_requests(state: &mut BrowserState) -> Result<String, String> {
     Ok(format!("{}{}", lines.join("\n"), omitted_note(shown, total)))
 }
 
-fn tool_console_messages(state: &BrowserState) -> Result<String, String> {
-    if state.console_messages.is_empty() {
+fn tool_console_messages(state: &mut BrowserState) -> Result<String, String> {
+    let limit = ExtractionLimits::cap(state.limits.max_console_messages);
+    let messages = state.page_mut().console_messages();
+    if messages.is_empty() {
         return Ok("No console messages.".to_string());
     }
-    let limit = ExtractionLimits::cap(state.limits.max_console_messages);
-    let total = state.console_messages.len();
-    let shown: Vec<&str> = state.console_messages.iter().take(limit).map(String::as_str).collect();
+    let total = messages.len();
+    let shown: Vec<String> = messages.iter().take(limit)
+        .map(|m| format!("[{}] {}", m.level, m.text))
+        .collect();
     Ok(format!("{}{}", shown.join("\n"), omitted_note(shown.len(), total)))
 }
 
@@ -1350,7 +1351,6 @@ fn tool_close(state: &mut BrowserState) -> Result<String, String> {
     }
     state.tabs.clear();
     state.active_tab = None;
-    state.console_messages.clear();
     state.interactive_refs.clear();
     Ok("All browser tabs closed.".to_string())
 }
@@ -2979,5 +2979,65 @@ mod tests {
             !md_example2.contains("serde"),
             "docs.rs content leaked into example.com tab"
         );
+    }
+
+    /// Text of a successful `tools/call` reply, through the same dispatch the
+    /// server uses.
+    async fn call_tool_text(state: &mut BrowserState, name: &str, arguments: Value) -> String {
+        let response = handle_tool_call(json!(1), &json!({ "name": name, "arguments": arguments }), state).await;
+        let result = response.result.unwrap_or_else(|| panic!("{name} returned no result"));
+        assert!(result.get("isError").is_none(), "{name} failed: {result}");
+        result.pointer("/content/0/text").and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("{name} returned no text: {result}"))
+            .to_string()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn console_messages_report_page_console_calls_and_uncaught_errors() {
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+        state
+            .page_mut()
+            .navigate("data:text/html,<script>console.log('hello', 42); console.warn('careful');</script><script>throw new Error('boom')</script>")
+            .await
+            .expect("test page should navigate");
+
+        // The uncaught error entry carries its stack on the following lines.
+        let messages = call_tool_text(&mut state, "browser_console_messages", json!({})).await;
+        assert!(
+            messages.starts_with("[log] hello 42\n[warning] careful\n[error] Uncaught Error: boom\n"),
+            "expected the console calls then the uncaught error, got {messages:?}"
+        );
+
+        call_tool_text(&mut state, "browser_evaluate", json!({ "expression": "console.error('from eval')" })).await;
+        let messages = call_tool_text(&mut state, "browser_console_messages", json!({})).await;
+        assert_eq!(messages.lines().last(), Some("[error] from eval"), "got {messages:?}");
+
+        state
+            .page_mut()
+            .navigate("data:text/html,<p>quiet</p>")
+            .await
+            .expect("second page should navigate");
+        let messages = call_tool_text(&mut state, "browser_console_messages", json!({})).await;
+        assert_eq!(messages, "No console messages.", "navigation must start a fresh log");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn console_messages_survive_a_tab_switch() {
+        let mut state = BrowserState::new(None, None, false, ExtractionLimits::default());
+        state
+            .page_mut()
+            .navigate("data:text/html,<script>console.log('first tab')</script>")
+            .await
+            .expect("first tab should navigate");
+
+        // Switching away suspends the first tab's isolate; its log must not
+        // go with it.
+        call_tool_text(&mut state, "browser_tab_new", json!({ "url": "data:text/html,<script>console.log('second tab')</script>" })).await;
+        let second = call_tool_text(&mut state, "browser_console_messages", json!({})).await;
+        assert_eq!(second, "[log] second tab");
+
+        call_tool_text(&mut state, "browser_tab_switch", json!({ "tab_id": "tab-1" })).await;
+        let first = call_tool_text(&mut state, "browser_console_messages", json!({})).await;
+        assert_eq!(first, "[log] first tab");
     }
 }
