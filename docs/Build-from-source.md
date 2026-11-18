@@ -1,10 +1,11 @@
 ## Requirements
 
-- Rust 1.75+ ([rustup.rs](https://rustup.rs))
+- Rust 1.85+ ([rustup.rs](https://rustup.rs))
 - C compiler (gcc or clang)
 - ~5 GB free disk space (V8 compiles from source on first build)
 
-First build takes about 5 minutes. Incremental builds are seconds.
+First build takes about 5 minutes. Incremental builds are much faster; the
+[README](../README.md#removed) lists measured times.
 
 ## Build
 
