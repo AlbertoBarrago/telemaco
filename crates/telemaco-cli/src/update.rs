@@ -41,7 +41,6 @@ fn asset_name() -> Result<String> {
     let (os, ext) = match std::env::consts::OS {
         "macos" => ("macos", "tar.gz"),
         "linux" => ("linux", "tar.gz"),
-        "windows" => ("windows", "zip"),
         other => bail!("no release is published for this platform ({other})"),
     };
     Ok(format!("telemaco-{arch}-{os}{}.{ext}", variant_suffix()))
@@ -148,10 +147,8 @@ pub async fn run(check_only: bool, force: bool) -> Result<()> {
 
     if cfg!(windows) {
         bail!(
-            "self-update is not supported on Windows yet: a running .exe cannot be \
-             replaced in place. Download {} from \
-             https://github.com/{REPO}/releases/latest and unpack it over your install.",
-            asset_name()?
+            "self-update is not supported on Windows: no release is published for \
+             Windows, so rebuild from source to update (see docs/Installation.md)."
         );
     }
 
