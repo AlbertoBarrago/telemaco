@@ -152,14 +152,10 @@ jobs:
 
       - name: Stage candidate binaries for comparison
         run: |
-          # Both binaries, in a directory of their own. `scrape` spawns
-          # telemaco-worker from its own directory, so a lone `telemaco` cannot
-          # run it; and base and candidate need separate directories or they
-          # would share one worker and the comparison would measure a mixture.
+          # Base and candidate binaries live in separate directories so the
+          # comparison never mixes them.
           install -D -m 0755 target/release/telemaco \
             "$RUNNER_TEMP/telemaco-ci/pr/telemaco"
-          install -D -m 0755 target/release/telemaco-worker \
-            "$RUNNER_TEMP/telemaco-ci/pr/telemaco-worker"
 
       - name: Build render and stealth release
         run: cargo build --release -p telemaco-cli --bins --features render,stealth
@@ -256,11 +252,7 @@ jobs:
           install -D -m 0755 \
             "$RUNNER_TEMP/telemaco-base-target/release/telemaco" \
             "$RUNNER_TEMP/telemaco-ci/base/telemaco"
-          install -D -m 0755 \
-            "$RUNNER_TEMP/telemaco-base-target/release/telemaco-worker" \
-            "$RUNNER_TEMP/telemaco-ci/base/telemaco-worker"
-          chmod 0755 "$RUNNER_TEMP/telemaco-ci/pr/telemaco" \
-                     "$RUNNER_TEMP/telemaco-ci/pr/telemaco-worker"
+          chmod 0755 "$RUNNER_TEMP/telemaco-ci/pr/telemaco"
 
       - name: Run the acceptance gate for base and candidate
         shell: bash
