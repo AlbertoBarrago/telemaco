@@ -4761,7 +4761,9 @@ pub fn build_extension() -> Extension {
     // `mut` is load-bearing under the render feature, where the block below
     // pushes the rendering ops. A no-render build never reaches those pushes,
     // so the compiler reports the binding as needlessly mutable there; dropping
-    // the `mut` to silence that warning breaks the render build instead.
+    // the `mut` breaks the render build instead, so allow the lint only where
+    // it is a false positive.
+    #[cfg_attr(not(feature = "render"), allow(unused_mut))]
     let mut ops = vec![
         op_dom(),
         op_script_mark_started(),

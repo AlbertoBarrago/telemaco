@@ -529,6 +529,7 @@ fn rebase_css_urls(css: &str, base: &url::Url) -> String {
 /// Extract network-backed `url(...)` assets while respecting CSS comments and
 /// strings. Linked sheets have already been rebased before materialization;
 /// inline declarations are resolved against the document base here.
+#[cfg(any(feature = "render", test))]
 fn css_resource_urls(css: &str, base: &url::Url) -> Vec<String> {
     let mut urls = Vec::new();
     let mut index = 0usize;
@@ -621,6 +622,7 @@ fn css_resource_urls(css: &str, base: &url::Url) -> Vec<String> {
 ///
 /// Shared by the generic scan and the `@font-face` path so the two cannot
 /// disagree about quoting, fragments, `data:` or an unresolved `var()`.
+#[cfg(any(feature = "render", test))]
 fn push_css_url(raw: &str, base: &url::Url, urls: &mut Vec<String>) {
     let raw = raw.trim();
     let value = if raw.len() >= 2
@@ -659,6 +661,7 @@ fn push_css_url(raw: &str, base: &url::Url, urls: &mut Vec<String>) {
 ///
 /// A malformed block is left to the normal scanner, so this cannot swallow the
 /// rules that follow it.
+#[cfg(any(feature = "render", test))]
 fn css_font_face_rule(css: &str, base: &url::Url) -> Option<(usize, Vec<String>)> {
     if !css.get(..10)?.eq_ignore_ascii_case("@font-face") {
         return None;
@@ -683,6 +686,7 @@ fn css_font_face_rule(css: &str, base: &url::Url) -> Option<(usize, Vec<String>)
 
 /// Byte offset of the brace closing the block that `css` opens, or `None` when
 /// the block is unterminated. Braces inside strings do not count.
+#[cfg(any(feature = "render", test))]
 fn css_block_end(css: &str) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote: Option<char> = None;
@@ -720,6 +724,7 @@ fn css_block_end(css: &str) -> Option<usize> {
 /// Value of the last declaration named `name` in a declaration block. Last
 /// rather than first, because that is what the cascade resolves to and what
 /// `telemaco-render` reads.
+#[cfg(any(feature = "render", test))]
 fn css_last_declaration<'a>(block: &'a str, name: &str) -> Option<&'a str> {
     let mut found = None;
     let mut start = 0usize;
@@ -765,6 +770,7 @@ fn css_last_declaration<'a>(block: &'a str, name: &str) -> Option<&'a str> {
 }
 
 /// The `url(...)` values of one declaration, unquoted, in source order.
+#[cfg(any(feature = "render", test))]
 fn css_url_values(value: &str) -> Vec<&str> {
     let lower = value.to_ascii_lowercase();
     let mut out = Vec::new();
@@ -794,6 +800,7 @@ fn css_url_values(value: &str) -> Vec<&str> {
 
 /// Whether the renderer can decode a font source, by the same extension rule
 /// `telemaco-render` applies before it will even consider one.
+#[cfg(any(feature = "render", test))]
 fn font_source_is_decodable(src: &str) -> bool {
     let path = src
         .split(['?', '#'])
@@ -807,6 +814,7 @@ fn font_source_is_decodable(src: &str) -> bool {
 /// terminating semicolon. Semicolons inside quoted URLs, comments, or `url()`
 /// parentheses do not end the rule. A malformed import is left to the normal
 /// scanner so this helper cannot swallow following declarations.
+#[cfg(any(feature = "render", test))]
 fn css_import_rule_len(css: &str) -> Option<usize> {
     let prefix = css.get(..7)?;
     if !prefix.eq_ignore_ascii_case("@import") {
@@ -858,6 +866,7 @@ fn css_import_rule_len(css: &str) -> Option<usize> {
     None
 }
 
+#[cfg(feature = "render")]
 fn render_resource_type(url: &url::Url) -> ResourceType {
     let path = url.path().to_ascii_lowercase();
     if [".woff", ".woff2", ".ttf", ".otf", ".eot"]
