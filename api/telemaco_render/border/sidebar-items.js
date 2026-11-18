@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["MEDIUM_BORDER_WIDTH"],"enum":["BorderStyle"],"fn":["expand_sides"],"struct":["BorderModel","BorderRadii","CornerRadius","OutlineModel","RadiusValue","ResolvedBorderRadii","Sides"]};

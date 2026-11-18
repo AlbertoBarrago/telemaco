@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["PageError"],"struct":["NetworkEvent","Page","StoredResponseBody"]};

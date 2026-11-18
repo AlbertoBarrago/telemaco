@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["run"],"mod":["blocks","config","http"],"struct":["BrowserState"]};

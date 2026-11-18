@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["AddressError"],"fn":["redact_tailcat_tokens"],"struct":["TailcatAddress"]};

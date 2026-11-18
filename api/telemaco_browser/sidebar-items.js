@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"constant":["HTML_TO_MARKDOWN_JS"],"enum":["InterceptResolution"],"mod":["context","lifecycle","page","profiles"],"struct":["InterceptedRequest"]};

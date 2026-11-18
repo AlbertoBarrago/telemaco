@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["canonical_domain","default_cookie_path"],"struct":["CookieInfo","CookieJar"]};

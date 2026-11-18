@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["PseudoClass","PseudoElement","SelectorKey"],"fn":["parse_selector"],"struct":["CompiledSelector","CssLocalName","CssNamespace","CssString","DomElement","Matcher","TelemacoSelector","TelemacoSelectorParser"]};

@@ -219,10 +219,8 @@ and text output never move underneath a release.
 
 API reference: the workspace crates that embed V8 (telemaco, telemaco-js,
 telemaco-browser, telemaco-mcp) cannot be rendered by docs.rs
-because building them requires compiling V8. The generated rustdoc for every
-crate is published with the site and browsable at
-[albz.it/telemaco/api](https://albz.it/telemaco/api) (also available in-repo
-under `api/`).
+because building them requires compiling V8. Generate their rustdoc locally
+with `cargo doc --no-deps --open`.
 
 ## Quick start
 

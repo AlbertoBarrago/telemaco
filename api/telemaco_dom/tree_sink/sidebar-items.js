@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"fn":["parse_fragment","parse_fragment_with_context","parse_html"],"struct":["TelemacoElemName"]};
