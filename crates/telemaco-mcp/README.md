@@ -18,7 +18,7 @@ starts it with `telemaco mcp`.
 | Feature | Effect |
 |---------|--------|
 | `stealth` | Enables `telemaco-browser/stealth` and `telemaco-net/stealth`: the wreq/BoringSSL transport and matching browser identity. |
-| `render` | Enables `telemaco-browser/render` and pulls in `base64`, which is what makes the `browser_screenshot` and `browser_pdf` tools available. Streaming screencasts stay CDP-only. |
+| `render` | Enables `telemaco-browser/render` and pulls in `base64`, which is what makes the `browser_screenshot` and `browser_pdf` tools available. |
 
 ## Usage
 

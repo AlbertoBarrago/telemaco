@@ -1,4 +1,4 @@
-Telemaco is an open-source headless browser engine written in Rust. It runs JavaScript via V8, speaks the Chrome DevTools Protocol, and works as a drop-in replacement for headless Chrome with Puppeteer and Playwright.
+Telemaco is an open-source headless browser engine written in Rust. It runs JavaScript via V8 on a real DOM and is built for web scraping and AI agents: use it from the shell with `telemaco fetch`, give an agent browser tools through the MCP server, or embed it as a Rust library.
 
 ## Versus headless Chrome
 
@@ -9,12 +9,9 @@ Telemaco is an open-source headless browser engine written in Rust. It runs Java
 | Startup     | Instant  | ~2s             |
 | Page load   | 85 ms    | ~500 ms         |
 | Anti-detect | Built-in | None            |
-| Puppeteer   | Yes      | Yes             |
-| Playwright  | Yes      | Yes             |
 
 Rendering and stealth are both first-class capabilities. Release builds
-support screenshots, scroll-aware layout, activity-driven CDP screencasting,
-and raster PDF export; stealth builds retain all of those surfaces while adding
+support screenshots, scroll-aware layout, and raster PDF export; stealth builds retain all of those surfaces while adding
 the wreq/BoringSSL transport and browser-identity protections.
 
 ## Quickstart
@@ -22,15 +19,12 @@ the wreq/BoringSSL transport and browser-identity protections.
 - [Installation](Installation.md)
 - [Your first fetch](Your-first-fetch.md)
 - [Extract data](Extract-data.md)
-- [Connect Puppeteer or Playwright](Connect-Puppeteer-or-Playwright.md)
 
 ## Guides
 
 - [Build from source](Build-from-source.md)
 - [Configure stealth and proxies](Configure-stealth-and-proxies.md)
 - [Markdown extraction](Markdown-extraction.md)
-- [Use with Puppeteer](Use-with-Puppeteer.md)
-- [Use with Playwright](Use-with-Playwright.md)
 - [Use the MCP server](Use-the-MCP-server.md)
 - [Use as a Rust library](Use-as-a-Rust-library.md)
 - [Persist cookies and storage](Persist-cookies-and-storage.md)
@@ -45,7 +39,7 @@ the wreq/BoringSSL transport and browser-identity protections.
 ## Contributing
 
 - [Architecture overview](Architecture-overview.md)
-- [Adding a CDP method or Web API](Adding-a-CDP-method-or-Web-API.md)
+- [Adding a Web API](Adding-a-Web-API.md)
 - [Testing and debugging](Testing-and-debugging.md)
 
 ## Links

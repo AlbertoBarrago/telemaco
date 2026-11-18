@@ -14,7 +14,6 @@
     <a href="https://github.com/AlbertoBarrago/telemaco/stargazers"><img src="https://img.shields.io/github/stars/AlbertoBarrago/telemaco?style=for-the-badge&label=stars&color=34D399" alt="GitHub stars"></a>
     <a href="https://github.com/AlbertoBarrago/telemaco/blob/main/LICENSE"><img src="https://img.shields.io/github/license/AlbertoBarrago/telemaco?style=for-the-badge&label=license&color=9AA7B8" alt="License"></a>
     <a href="https://github.com/AlbertoBarrago/telemaco/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AlbertoBarrago/telemaco/ci.yml?style=for-the-badge&label=CI&color=45B1F8" alt="CI"></a>
-    <a href="https://hub.docker.com/r/albz222/telemaco"><img src="https://img.shields.io/docker/pulls/albz222/telemaco?style=for-the-badge&label=docker%20pulls&color=34D399" alt="Docker pulls"></a>
     <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.85%2B-45B1F8?style=for-the-badge&logo=rust&logoColor=white" alt="Rust"></a>
     <a href="https://github.com/AlbertoBarrago/telemaco"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-9AA7B8?style=for-the-badge" alt="Platforms"></a>
   </p>
@@ -23,10 +22,10 @@
 ---
 
 Telemaco runs real JavaScript through V8 (`deno_core`), keeps a real DOM tree,
-owns its layout and paint pipeline, speaks the Chrome DevTools Protocol, and
-acts as a drop-in replacement for headless Chrome with Puppeteer and
-Playwright. Rendering and stealth are first-class capabilities. It targets web
-scraping and AI agent automation.
+and owns its layout and paint pipeline. It targets web scraping and AI agent
+automation: fetch and extract from the shell with `telemaco fetch`, give an
+agent browser tools through the MCP server, or embed the engine as a Rust
+library. Rendering and stealth are first-class capabilities.
 
 Telemaco is a derivative work of
 [Obscura](https://github.com/h4ckf0r0day/obscura) (Apache-2.0). It started as a
@@ -38,7 +37,7 @@ attribution.
 
 Obscura is a browser engine; Telemaco is a browser engine **for automation**.
 Where Obscura focuses on the rendering core, Telemaco adds the surfaces that
-make it useful in production: a full CDP server for Puppeteer and Playwright, a
+make it useful in production: a
 stateful MCP server for AI agents, stealth against bot detection, parallel
 scraping, and a one-command installer that wires it into 15 coding agents.
 
@@ -51,22 +50,18 @@ scraping, and a one-command installer that wires it into 15 coding agents.
 | Page load    | **85 ms**     | ~500 ms         |
 | Startup      | **Instant**   | ~2s             |
 | Anti-detect  | **Built-in**  | None            |
-| Puppeteer    | **Yes**       | Yes             |
-| Playwright   | **Yes**       | Yes             |
 
 Roughly 12x faster page loads and 6x less memory than headless Chrome on
-framework pages, with the same CDP automation surface.
+framework pages.
 
 ## Highlights
 
 - **Native rendering**: CSS layout and paint, viewport and full-page
-  screenshots, activity-driven CDP screencasting, and PDF export. No Chromium,
+  screenshots, and PDF export. No Chromium,
   no WebView.
 - **Stealth mode**: wreq/BoringSSL transport, per-session fingerprint
   randomization, consistent browser identity, and a tracker blocklist.
   Rendering stays fully available when stealth is on.
-- **CDP compatible**: `telemaco serve` speaks the Chrome DevTools Protocol, so
-  Puppeteer, Playwright, and chromiumoxide connect out of the box.
 - **MCP server**: stateful browser automation tools for Claude Desktop, Cursor,
   and any MCP client, over stdio or HTTP.
 - **Hardened by default**: SSRF guards on loopback, RFC1918, and link-local
@@ -161,36 +156,6 @@ the same directory for the parallel `scrape` command.
 | `-no-render`          | No        | No                |
 | `-no-render-stealth`  | No        | Yes               |
 
-### Docker
-
-Pull the published image:
-
-```bash
-docker pull albz222/telemaco:latest
-docker run -d --name telemaco -p 127.0.0.1:9222:9222 albz222/telemaco:latest
-```
-
-Images are tagged by version (`albz222/telemaco:0.2.6`) as well as `latest`,
-and built for `linux/amd64` and `linux/arm64`. The container runs the CDP
-server on port 9222 by default, so Puppeteer and Playwright can connect to
-`ws://127.0.0.1:9222` straight away.
-
-Run a one-off command instead of the server by overriding the entrypoint:
-
-```bash
-docker run --rm --entrypoint /telemaco albz222/telemaco:latest \
-  fetch https://example.com --dump markdown
-```
-
-Or build it yourself from a checkout:
-
-```bash
-docker build -t telemaco .
-docker run -d --name telemaco -p 127.0.0.1:9222:9222 telemaco
-```
-
-Multi-stage build on `distroless/cc`: no shell, no package manager.
-
 ### Build from source
 
 ```bash
@@ -238,7 +203,7 @@ cargo install telemaco-cli --features render
 
 The publishable set: `telemaco` (embeddable API), `telemaco-cli`, and the
 workspace crates `telemaco-dom`, `telemaco-net`, `telemaco-js`,
-`telemaco-browser`, `telemaco-cdp`, `telemaco-mcp`, `telemaco-render`.
+`telemaco-browser`, `telemaco-mcp`, `telemaco-render`.
 
 The two libraries that define how a page renders are Telemaco-owned forks,
 published and maintained here rather than pinned to upstream schedules:
@@ -253,7 +218,7 @@ names (`taffy` / `cosmic_text`), so the crate source is unchanged: the layout
 and text output never move underneath a release.
 
 API reference: the workspace crates that embed V8 (telemaco, telemaco-js,
-telemaco-browser, telemaco-cdp, telemaco-mcp) cannot be rendered by docs.rs
+telemaco-browser, telemaco-mcp) cannot be rendered by docs.rs
 because building them requires compiling V8. The generated rustdoc for every
 crate is published with the site and browsable at
 [albz.it/telemaco/api](https://albz.it/telemaco/api) (also available in-repo
@@ -304,8 +269,8 @@ For local testing pass `--allow-private-network` or set
 ```bash
 telemaco fetch http://127.0.0.1:3000 --allow-private-network --dump text
 
-# Works on any subcommand, for example the CDP server for local automation:
-telemaco serve --port 9222 --allow-private-network
+# Works on any subcommand, for example the MCP server for local automation:
+telemaco mcp --allow-private-network
 ```
 
 The full allow/deny rules (including DNS-resolution-time checks) are in
@@ -324,57 +289,6 @@ telemaco scrape https://example.com --quiet --format json
 
 # Workers inherit the global proxy
 telemaco --proxy http://127.0.0.1:8080 scrape https://example.com https://news.ycombinator.com
-```
-
-### Drive it with Puppeteer or Playwright
-
-```bash
-telemaco serve --port 9222
-```
-
-```javascript
-// Puppeteer
-import puppeteer from 'puppeteer-core';
-
-const browser = await puppeteer.connect({
-  browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser',
-});
-
-const page = await browser.newPage();
-await page.goto('https://news.ycombinator.com');
-
-const stories = await page.evaluate(() =>
-  Array.from(document.querySelectorAll('.titleline > a'))
-    .map(a => ({ title: a.textContent, url: a.href }))
-);
-console.log(stories);
-
-await browser.disconnect();
-```
-
-```javascript
-// Playwright
-import { chromium } from 'playwright-core';
-
-const browser = await chromium.connectOverCDP({
-  endpointURL: 'ws://127.0.0.1:9222',
-});
-
-const page = await browser.newContext().then(ctx => ctx.newPage());
-await page.goto('https://en.wikipedia.org/wiki/Web_scraping');
-console.log(await page.title());
-
-await browser.close();
-```
-
-Rendering-enabled builds add `page.screenshot()` (viewport and full page) and
-`page.pdf()`:
-
-```javascript
-await page.setViewport({ width: 1440, height: 1000 });
-await page.goto('https://example.com', { waitUntil: 'load' });
-await page.screenshot({ path: 'page.png', fullPage: true });
-await page.pdf({ path: 'page.pdf', format: 'A4', printBackground: true });
 ```
 
 ## MCP (Model Context Protocol)
@@ -407,7 +321,7 @@ Tools: `browser_navigate`, `browser_snapshot`, `browser_screenshot`,
 `browser_press_key`, `browser_select_option`, `browser_evaluate`,
 `browser_wait_for`, `browser_network_requests`, `browser_console_messages`,
 `browser_close`. Render-enabled builds expose `browser_screenshot` and
-`browser_pdf`; streaming screencasts remain CDP-only.
+`browser_pdf`.
 
 ## Agent setup (`telemaco install`)
 
@@ -482,8 +396,7 @@ rewritten as strict JSON, and the note says so.
 | `--proxy` | — | Inherited global HTTP/SOCKS5 proxy URL |
 
 Global flags `--proxy`, `--stealth`, and `--allow-private-network` are valid
-before or after the subcommand and apply to `fetch`, `serve`, `scrape`, and
-`mcp`.
+before or after the subcommand and apply to `fetch`, `scrape`, and `mcp`.
 
 ### `telemaco scrape <URL...>`
 
@@ -501,14 +414,13 @@ Build with `--features render,stealth`, then enable at runtime with the global
 fingerprint randomization (GPU, screen, canvas, audio, battery), realistic
 `navigator.userAgentData` (high-entropy values), trusted dispatched events,
 and a tracker blocklist. The stealth build retains the complete rendering
-surface: screenshot, screencast, PDF, CDP, and MCP all keep working.
+surface: screenshot, PDF, and MCP all keep working.
 
 ## Architecture
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `serve` (CDP server), `scrape`, `mcp` |
-| `telemaco-cdp` | Chrome DevTools Protocol server (WebSocket) |
+| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update`, `remote` |
 | `telemaco-js` | V8/`deno_core` runtime and DOM ops bridge |
 | `telemaco-dom` | DOM tree |
 | `telemaco-net` | HTTP client, stealth transport, cookie jar, robots cache, tracker blocklist |
@@ -528,7 +440,7 @@ cargo nextest run --release --features render --no-fail-fast
 ```
 
 The behavioral gate is the acceptance suite in
-[`acceptance/`](acceptance/README.md), 46 stages that must stay at 46/46:
+[`acceptance/`](acceptance/README.md), 45 stages that must stay at 45/45:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py

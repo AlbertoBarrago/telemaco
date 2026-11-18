@@ -6,9 +6,9 @@ building, testing, or changing anything.
 
 Telemaco is a headless browser engine in Rust. It runs real JavaScript through
 V8 (`deno_core`), keeps a real DOM tree, owns its layout and paint pipeline,
-speaks the Chrome DevTools Protocol, and is a drop-in replacement for headless
-Chrome with Puppeteer and Playwright. Rendering and stealth are both first-class
-capabilities. It targets web scraping and AI-agent automation.
+and targets web scraping and AI-agent automation through the CLI, the MCP
+server, and an embeddable Rust library. Rendering and stealth are both
+first-class capabilities.
 
 ## Build
 
@@ -49,7 +49,7 @@ single V8 isolate per process, so the runtime tests fail under it. `nextest`
 runs each test in its own process, which is the only supported way.
 
 The authoritative behavioral gate is the **acceptance suite** in
-`acceptance/`, 46 stages that must stay at 46/46:
+`acceptance/`, 45 stages that must stay at 45/45:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -74,7 +74,7 @@ For any code change:
 1. Run focused release-mode nextest coverage for the crates and repro involved.
 2. Run `cargo nextest run --release --features render --no-fail-fast`.
 3. Run the exact release build shown above.
-4. The acceptance suite still reports **46/46**.
+4. The acceptance suite still reports **45/45**.
 5. For render changes, run deterministic fixtures and broad top/bottom real-site
    captures using the methodology below.
 6. For stealth changes, re-test with `--stealth` (a non-stealth binary won't
@@ -233,19 +233,16 @@ Tests: `cargo test -p telemaco-cli --no-default-features --bin telemaco installe
 
 ## Architecture
 
-- **telemaco-cli** — CLI: `fetch` (`--dump assets|html|text|links|markdown|original|cookies`, `--eval <JS>`, `--screenshot <PNG>`), `serve` (CDP server), `scrape`, `mcp`. `--proxy`, `--stealth`, and `--allow-private-network` are global flags: valid before or after the subcommand and applied to `fetch`, `serve`, `scrape`, and `mcp` (a `scrape` run forwards `--stealth` to each worker via `TELEMACO_STEALTH`).
-- **telemaco-cdp** — Chrome DevTools Protocol server (WebSocket). Managed page
-  sessions use `"{targetId}-session"`; explicit flattened attachments receive
-  distinct session ids so Playwright and Puppeteer can open raw page sessions.
+- **telemaco-cli**: CLI: `fetch` (`--dump assets|html|text|links|markdown|original|cookies`, `--eval <JS>`, `--screenshot <PNG>`), `scrape`, `mcp`. `--proxy`, `--stealth`, and `--allow-private-network` are global flags: valid before or after the subcommand and applied to `fetch`, `scrape`, and `mcp` (a `scrape` run forwards `--stealth` to each worker via `TELEMACO_STEALTH`).
 - **telemaco-js** — V8/`deno_core` runtime. `js/bootstrap.js` is the DOM/browser shim; `src/ops.rs` bridges JS to Rust DOM ops; `src/runtime.rs` owns the isolate and the per-page `TelemacoState`.
 - **telemaco-dom** — DOM tree (`src/tree.rs`).
 - **telemaco-net** — HTTP client (`client.rs`), stealth client (`wreq_client.rs`), cookie jar, robots cache, tracker blocklist.
 - **telemaco-browser** — the `Page` type, navigation, JS evaluation.
 - **telemaco-render** — selector cascade, computed style, retained layout,
   scrolling, text shaping, images/SVG/canvas, and CPU-backed paint. The
-  `render` feature powers geometry, screenshots, CDP screencasting, and PDF.
+  `render` feature powers geometry, screenshots, and PDF.
 - **telemaco-mcp** — stateful MCP automation tools. Render builds expose
-  `browser_screenshot` and `browser_pdf`; streaming screencasts remain CDP-only.
+  `browser_screenshot` and `browser_pdf`.
 - **telemaco-remote**: remote protocol v1 (length-prefixed JSON, 1 MiB frame
   cap, closed enums with `deny_unknown_fields`), agent, client, and
   transports. Tailcat is driven as an external `tailcat` process, never
@@ -315,8 +312,6 @@ screenshots or reports.
 - **Multi-statement `--eval` starting with `const` returns `null`** (V8 gives
   `const` an empty completion value). Wrap snippets in an IIFE:
   `(function(){ ...; return result; })()`.
-- **`canAccessOpener` must be in every `TargetInfo` payload**, or strict CDP
-  clients (chromiumoxide) panic.
 - **The DOM reparenting guards in `tree.rs` are load-bearing.** `append_child` /
   `insert_before` reject cycles (inserting an ancestor of the target is a no-op).
   A cyclic reparent used to make `descendants()` loop forever and hang the

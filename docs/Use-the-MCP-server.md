@@ -89,8 +89,7 @@ Element references describe the current rendered page state and can become
 stale after navigation, interaction, scrolling, or a framework rerender. Take
 a fresh snapshot or interactive-element listing before acting again.
 
-MCP exposes still-image and PDF output. It does not stream video frames; use
-CDP `Page.startScreencast` for activity-driven screencasting.
+MCP exposes still-image and PDF output. It does not stream video frames.
 
 ## Claude Desktop
 

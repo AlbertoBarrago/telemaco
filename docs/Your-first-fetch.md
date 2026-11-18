@@ -53,8 +53,6 @@ telemaco fetch https://my-spa.example --wait-until domcontentloaded --eval "docu
 | `networkidle2`     | ≤2 network connections active for 500ms       |
 | `networkidle0`     | 0 network connections active for 500ms        |
 
-(When driving telemaco via Puppeteer or Playwright the default is `domcontentloaded` to match client expectations.)
-
 ## Common flags
 
 ```

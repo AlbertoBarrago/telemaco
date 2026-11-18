@@ -25,8 +25,8 @@ To help us triage quickly, please provide as much of the following as you can:
 - The telemaco version or commit, plus OS and architecture.
 - The location of the affected code (file path and commit, or a direct link).
 - Any special configuration or flags required to reproduce.
-- Step-by-step instructions: a page, `--eval` snippet, or CDP sequence that
-  triggers it.
+- Step-by-step instructions: a page, `--eval` snippet, or MCP tool-call
+  sequence that triggers it.
 - Proof-of-concept code if you have it, and the impact you think it has.
 
 ## Our response

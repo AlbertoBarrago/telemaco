@@ -409,7 +409,7 @@
     <div class="sec-head">
       <div class="kicker">Why Telemaco</div>
       <h2>Headless Chrome, without the Chrome</h2>
-      <p>Same CDP automation surface. A fraction of the resources. Built-in anti-detection.</p>
+      <p>A real engine for scraping and agents. A fraction of the resources. Built-in anti-detection.</p>
     </div>
     <div class="table-wrap">
       <table>
@@ -422,7 +422,6 @@
           <tr><td class="metric-name">Page load</td><td class="col-telemaco win">85 ms</td><td class="lose">~500 ms</td></tr>
           <tr><td class="metric-name">Startup</td><td class="col-telemaco win">Instant</td><td class="lose">~2 s</td></tr>
           <tr><td class="metric-name">Anti-detect</td><td class="col-telemaco win">Built-in</td><td class="lose">None</td></tr>
-          <tr><td class="metric-name">Puppeteer / Playwright</td><td class="col-telemaco win">Yes</td><td class="lose">Yes</td></tr>
         </tbody>
       </table>
     </div>
@@ -482,7 +481,7 @@
       <div class="feature">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg></div>
         <h3>Native rendering</h3>
-        <p>CSS layout and paint, viewport and full-page screenshots, activity-driven CDP screencasting, and PDF export. No Chromium, no WebView.</p>
+        <p>CSS layout and paint, viewport and full-page screenshots, and PDF export. No Chromium, no WebView.</p>
       </div>
       <div class="feature">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
@@ -491,8 +490,8 @@
       </div>
       <div class="feature">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-        <h3>CDP compatible</h3>
-        <p><code>telemaco serve</code> speaks the Chrome DevTools Protocol, so Puppeteer, Playwright, and chromiumoxide connect out of the box.</p>
+        <h3>Rust library</h3>
+        <p>The <code>telemaco</code> crate embeds the engine in a Rust program: <code>Browser</code>, <code>Page</code>, <code>Element</code> and request interception, with no separate process.</p>
       </div>
       <div class="feature">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
@@ -518,7 +517,7 @@
     <div class="sec-head">
       <div class="kicker">Install</div>
       <h2>Up and running in seconds</h2>
-      <p>One-command installer, a published Docker image, the CLI from crates.io, or build from source.</p>
+      <p>One-command installer, Homebrew, the CLI from crates.io, or build from source.</p>
     </div>
     <div class="install-grid">
       <div class="install-card">
@@ -537,34 +536,27 @@
 <span class="cmd">$</span> brew install telemaco-stealth</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">3</span> Docker</h3>
-        <pre><span class="cmt"># Published image, linux/amd64 + linux/arm64</span>
-<span class="cmd">$</span> docker pull albz222/telemaco:latest
-<span class="cmd">$</span> docker run -d --name telemaco \
-    -p 127.0.0.1:9222:9222 albz222/telemaco:latest</pre>
-      </div>
-      <div class="install-card">
-        <h3><span class="n">4</span> Prebuilt binary</h3>
+        <h3><span class="n">3</span> Prebuilt binary</h3>
         <pre><span class="cmt"># Linux x86_64</span>
 <span class="cmd">$</span> curl -LO https://github.com/AlbertoBarrago/telemaco/releases/latest/download/telemaco-x86_64-linux.tar.gz
 <span class="cmd">$</span> tar xzf telemaco-x86_64-linux.tar.gz
 <span class="cmd">$</span> ./telemaco fetch https://example.com --eval "document.title"</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">5</span> From source</h3>
+        <h3><span class="n">4</span> From source</h3>
         <pre><span class="cmd">$</span> git clone https://github.com/AlbertoBarrago/telemaco.git
 <span class="cmd">$</span> cd telemaco
 <span class="cmd">$</span> cargo build --release -p telemaco-cli --bins --features render</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">6</span> Crates.io</h3>
+        <h3><span class="n">5</span> Crates.io</h3>
         <pre><span class="cmt"># The headless browser as a Rust library</span>
 <span class="cmd">$</span> cargo add telemaco
 <span class="cmt"># Or the CLI as a binary</span>
 <span class="cmd">$</span> cargo install telemaco-cli --features render</pre>
       </div>
       <div class="install-card">
-        <h3><span class="n">7</span> Update</h3>
+        <h3><span class="n">6</span> Update</h3>
         <pre><span class="cmt"># Keep telemaco current</span>
 <span class="cmd">$</span> telemaco update            <span class="cmt"># latest release</span>
 <span class="cmd">$</span> telemaco update --check    <span class="cmt"># report only</span>
@@ -580,44 +572,14 @@
   <div class="wrap">
     <div class="sec-head">
       <div class="kicker">Quick start</div>
-      <h2>Drive it like headless Chrome</h2>
-      <p>Same CDP surface your existing Puppeteer and Playwright code already uses.</p>
+      <h2>Drive it from the shell</h2>
+      <p>One command per page: evaluate, extract, screenshot, or scrape in parallel.</p>
     </div>
     <div class="tabs">
-      <button class="tab active" data-tab="puppeteer">Puppeteer</button>
-      <button class="tab" data-tab="playwright">Playwright</button>
-      <button class="tab" data-tab="cli">CLI</button>
+      <button class="tab active" data-tab="cli">CLI</button>
     </div>
     <div class="hero-code">
-      <div class="code-head"><span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span id="tab-label">puppeteer.js</span></div>
-      <div class="code-body" id="tab-puppeteer">
-        <span class="cmt">// Start the CDP server</span><br />
-        <span class="cmd">$</span> telemaco serve --port 9222<br /><br />
-        <span class="cmt">// puppeteer.js</span><br />
-        <span class="dim">import</span> puppeteer <span class="dim">from</span> <span class="out">'puppeteer-core'</span>;<br /><br />
-        <span class="dim">const</span> browser = <span class="dim">await</span> puppeteer.connect({<br />
-        &nbsp;&nbsp;browserWSEndpoint: <span class="out">'ws://127.0.0.1:9222/devtools/browser'</span>,<br />
-        });<br />
-        <span class="dim">const</span> page = <span class="dim">await</span> browser.newPage();<br />
-        <span class="dim">await</span> page.goto(<span class="out">'https://news.ycombinator.com'</span>);<br /><br />
-        <span class="dim">const</span> stories = <span class="dim">await</span> page.evaluate(<span class="dim">()</span> =&gt;<br />
-        &nbsp;&nbsp;Array.from(document.querySelectorAll(<span class="out">'.titleline &gt; a'</span>))<br />
-        &nbsp;&nbsp;&nbsp;&nbsp;.map(a =&gt; ({ title: a.textContent, url: a.href }))<br />
-        );<br />
-        console.log(stories);
-      </div>
-      <div class="code-body" id="tab-playwright">
-        <span class="cmt">// Start the CDP server</span><br />
-        <span class="cmd">$</span> telemaco serve --port 9222<br /><br />
-        <span class="cmt">// playwright.js</span><br />
-        <span class="dim">import</span> { chromium } <span class="dim">from</span> <span class="out">'playwright-core'</span>;<br /><br />
-        <span class="dim">const</span> browser = <span class="dim">await</span> chromium.connectOverCDP({<br />
-        &nbsp;&nbsp;endpointURL: <span class="out">'ws://127.0.0.1:9222'</span>,<br />
-        });<br />
-        <span class="dim">const</span> page = <span class="dim">await</span> browser.newContext().then(ctx =&gt; ctx.newPage());<br />
-        <span class="dim">await</span> page.goto(<span class="out">'https://en.wikipedia.org/wiki/Web_scraping'</span>);<br />
-        console.log(<span class="dim">await</span> page.title());
-      </div>
+      <div class="code-head"><span class="c c1"></span><span class="c c2"></span><span class="c c3"></span><span id="tab-label">terminal</span></div>
       <div class="code-body" id="tab-cli">
         <span class="cmt"># Page title</span><br />
         <span class="cmd">$</span> telemaco fetch https://example.com --eval "document.title"<br /><br />
@@ -771,8 +733,6 @@
       '<span class="out">1. Show HN: ...</span><br/><span class="out">2. Ask HN: ...</span><br/><span class="out">3. Launch HN: ...</span>',
     'telemaco fetch https://example.com --dump text':
       '<span class="out">Example Domain</span><br/><span class="dim">This domain is for use in illustrative examples...</span>',
-    'telemaco serve --port 9222':
-      '<span class="dim">→ CDP server listening on ws://127.0.0.1:9222</span>',
     'telemaco scrape url1 url2 url3 --concurrency 25 --format json':
       '<span class="out">[{"url":"url1","title":"..."},{"url":"url2","title":"..."}]</span>',
     'telemaco --version':
@@ -780,7 +740,7 @@
     'telemaco install':
       '<span class="dim">Detected: Claude Code, Cursor, Codex</span><br/><span class="out">✓ Wired telemaco into 3 agents</span>',
     'help':
-      '<span class="dim">Try: telemaco fetch https://example.com --eval "document.title"</span><br/><span class="dim">telemaco serve --port 9222</span><br/><span class="dim">telemaco install</span>'
+      '<span class="dim">Try: telemaco fetch https://example.com --eval "document.title"</span><br/><span class="dim">telemaco install</span>'
   };
   termInput.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;

@@ -2,12 +2,11 @@
 
 ```bash
 telemaco fetch https://example.com --stealth
-telemaco serve --stealth
 telemaco scrape url1 url2 --stealth
 telemaco mcp --stealth
 ```
 
-`--stealth` is a global flag, so it works before or after the subcommand and applies to `fetch`, `serve`, `scrape`, and `mcp`. In a `scrape` run each worker inherits it.
+`--stealth` is a global flag, so it works before or after the subcommand and applies to `fetch`, `scrape`, and `mcp`. In a `scrape` run each worker inherits it.
 
 What `--stealth` changes:
 
@@ -43,7 +42,7 @@ HTTP proxy:
 
 ```bash
 telemaco fetch https://example.com --proxy http://proxy.example.com:8080
-telemaco serve --proxy http://proxy.example.com:8080
+telemaco mcp --proxy http://proxy.example.com:8080
 ```
 
 With auth:
@@ -62,7 +61,7 @@ telemaco fetch https://example.com --proxy socks5://proxy.example.com:1080
 
 ```bash
 telemaco fetch https://example.com --user-agent "Mozilla/5.0 (...) ..."
-telemaco serve --user-agent "Mozilla/5.0 (...) ..."
+telemaco mcp --user-agent "Mozilla/5.0 (...) ..."
 ```
 
 Default UA matches a recent Chrome on the build platform.
@@ -74,20 +73,20 @@ The engine presents one of a built-in pool of realistic browser profiles (a mix 
 A single stable profile is used by default. One IP cycling through different identities is itself a signal, so rotation is opt-in:
 
 ```bash
-TELEMACO_PROFILE=2 telemaco serve          # pin a specific profile by index
-TELEMACO_ROTATE_PROFILE=1 telemaco serve   # random profile per browser context
+TELEMACO_PROFILE=2 telemaco mcp            # pin a specific profile by index
+TELEMACO_ROTATE_PROFILE=1 telemaco mcp     # random profile per browser context
 ```
 
 Timezone is driven by the process zone so `Date` (`getTimezoneOffset`, `toString`) and `Intl.DateTimeFormat` report the same region. Default is `Europe/Berlin`; set it to match the exit IP:
 
 ```bash
-TELEMACO_TIMEZONE=America/New_York telemaco serve
+TELEMACO_TIMEZONE=America/New_York telemaco mcp
 ```
 
 `navigator.geolocation` reports configurable coordinates. Set them as `lat,lon` and keep them consistent with the timezone and proxy region:
 
 ```bash
-TELEMACO_GEOLOCATION="40.7128,-74.0060" telemaco serve
+TELEMACO_GEOLOCATION="40.7128,-74.0060" telemaco mcp
 ```
 
 Keep these aligned. A rotated or mismatched profile carries no matching TLS or timezone fingerprint, so when you pin a proxy region or TLS fingerprint, leave rotation off and set the timezone and geolocation to the same region. See [Environment variables](Environment-variables.md) for the full list.
@@ -95,7 +94,7 @@ Keep these aligned. A rotated or mismatched profile carries no matching TLS or t
 ## Combine
 
 ```bash
-telemaco serve \
+telemaco mcp \
   --stealth \
   --proxy http://user:pass@proxy.example.com:8080 \
   --user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ..."

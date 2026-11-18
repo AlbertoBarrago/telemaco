@@ -1,15 +1,12 @@
 ## `telemaco`
 
-Top-level flags apply to every subcommand.
+Top-level flags apply to every subcommand. Run with no subcommand to print help.
 
 ```
 -v, --verbose                Enable info logging
--p, --port <PORT>            CDP port (default 9222)
     --proxy <URL>            HTTP or SOCKS5 proxy
     --stealth                Consistent browser fingerprint + tracker blocking
     --obey-robots            Respect robots.txt
-    --user-agent <UA>        Override the User-Agent
-    --storage-dir <DIR>      Persistent cookies and localStorage
     --allow-private-network  Permit loopback / RFC1918 / link-local
     --config <PATH>          TOML config file (must exist if given)
     --v8-flags <FLAGS>       Raw V8 flags, applied at startup
@@ -60,26 +57,6 @@ requests a fixed `N`-second delay. `--timeout` separately bounds navigation.
 | `original` | Raw HTTP response body (binary-safe, bypasses the engine) |
 | `cookies`  | All cookies in the jar as a JSON array, including HttpOnly cookies invisible to `document.cookie` |
 
-## `telemaco serve`
-
-Run the CDP server. Puppeteer and Playwright connect over WebSocket.
-
-```
--p, --port <PORT>            CDP port (default 9222)
-    --host <HOST>            Bind host (default 127.0.0.1)
-    --proxy <URL>            HTTP or SOCKS5 proxy
-    --user-agent <UA>        Override the User-Agent
-    --stealth                Consistent browser fingerprint + tracker blocking (global)
-    --workers <N>            Worker processes (default 1)
-    --allow-file-access      Permit CDP clients to navigate to file:// URLs
-    --storage-dir <DIR>      Persistent cookies and localStorage
-    --allow-private-network  Permit loopback / RFC1918 / link-local
--q, --quiet                  Suppress info logging
--v, --verbose                Enable info logging
-```
-
-Default endpoint is `ws://127.0.0.1:9222`.
-
 ## `telemaco scrape [URLS]...`
 
 Run a JS expression across many URLs in parallel.
@@ -124,12 +101,12 @@ Run telemaco as an MCP server.
 
 `--max-chars` overrides the configured cap for `browser_markdown` and `browser_snapshot`; a `max_chars` argument on an individual tool call still wins over it. Every other extraction cap is set through the config file or the environment: see [Configuration file](Configuration-file.md).
 
-`--host` only applies with `--http`. The default `127.0.0.1` keeps the server loopback-only; set `0.0.0.0` to bind all interfaces (for example a Docker Compose sidecar) and pair it with `TELEMACO_MCP_ALLOWED_ORIGINS`.
+`--host` only applies with `--http`. The default `127.0.0.1` keeps the server loopback-only; set `0.0.0.0` to bind all interfaces (for example a container sidecar) and pair it with `TELEMACO_MCP_ALLOWED_ORIGINS`.
 
 Default transport is stdio. See [Use the MCP server](Use-the-MCP-server.md).
 
 Render-enabled builds add `browser_screenshot` and `browser_pdf` to the MCP
-tool list. Streaming screencasts are available through CDP rather than MCP.
+tool list.
 
 ## `telemaco remote`
 

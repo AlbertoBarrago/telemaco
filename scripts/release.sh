@@ -6,8 +6,8 @@
 #   scripts/release.sh 0.2.0 --yes        # no confirmation prompt
 #   scripts/release.sh 0.2.0 --skip-checks  # skip the local CI run
 #
-# Pushing the tag is the point of no return: `release.yml` and `docker.yml`
-# both fire on `v*` and publish. Everything before the push is reversible, so
+# Pushing the tag is the point of no return: `release.yml` fires on `v*`
+# and publishes. Everything before the push is reversible, so
 # the script does all of it first, shows the diff, and only then asks.
 set -euo pipefail
 
@@ -100,9 +100,6 @@ bump_file Cargo.toml \
   "s/^version = \"\Q$CURRENT\E\"\$/version = \"$VERSION\"/m"
 bump_file crates/telemaco/Cargo.toml \
   "s/^version = \"\Q$CURRENT\E\"\$/version = \"$VERSION\"/m"
-# The published image tag shown as an example of the current release.
-bump_file README.md \
-  "s/albz222\/telemaco:\Q$CURRENT\E/albz222\/telemaco:$VERSION/g"
 
 if [[ $DRY_RUN -eq 1 ]]; then
   printf '  would run   cargo update -w (refresh Cargo.lock)\n'
@@ -126,8 +123,7 @@ fi
 printf '  commit  chore(release): %s\n' "$VERSION"
 printf '  tag     %s (annotated, on the new commit)\n' "$TAG"
 printf '  push    main and %s to origin\n' "$TAG"
-printf '\n  the tag starts release.yml (archives for 5 targets x 4 variants)\n'
-printf '  and docker.yml (albz222/telemaco:%s and :latest)\n\n' "$VERSION"
+printf '\n  the tag starts release.yml (archives for 5 targets x 4 variants)\n\n'
 
 if [[ $DRY_RUN -eq 1 ]]; then
   note "dry run: nothing was written"

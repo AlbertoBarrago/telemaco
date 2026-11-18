@@ -4,8 +4,9 @@ A practical guide to building and using Telemaco. For the full documentation
 see `README.md` and `docs/`.
 
 Telemaco is a headless browser engine in Rust: it runs real JavaScript through
-V8, keeps a real DOM, renders natively, speaks the Chrome DevTools Protocol,
-and stands in for headless Chrome with Puppeteer and Playwright.
+V8, keeps a real DOM, and renders natively. Use it from the shell with
+`fetch` and `scrape`, from an AI agent through the MCP server, or as a Rust
+library.
 
 ---
 
@@ -15,7 +16,7 @@ A build produces two binaries in `target/release/`:
 
 | Binary | What it does |
 |---|---|
-| `telemaco` | CLI: `fetch`, `serve` (CDP server), `scrape`, `mcp` |
+| `telemaco` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update`, `remote` |
 | `telemaco-worker` | Worker for parallel scraping; must sit next to `telemaco` for `scrape` |
 
 Which features a binary has depends on how it was built. `--features render`
@@ -84,32 +85,13 @@ only treated as build output when a `Cargo.toml` sits beside it.
 Self-update is not available on Windows yet; a running `.exe` cannot be
 replaced in place, so the command says so instead of half-finishing.
 
-### 1.3 Docker
-
-```bash
-docker pull albz222/telemaco:latest
-docker run -d -p 127.0.0.1:9222:9222 albz222/telemaco:latest
-```
-
-The container runs the CDP server on port 9222, so Puppeteer and Playwright
-connect to `ws://127.0.0.1:9222` with nothing else to set up. Override the
-entrypoint for a one-off command:
-
-```bash
-docker run --rm --entrypoint /telemaco albz222/telemaco:latest \
-  fetch https://example.com --dump markdown
-```
-
-Images are built for `linux/amd64` and `linux/arm64`, tagged by version and
-`latest`.
-
 ## 2. Building
 
 The first build compiles V8 from source: around five minutes and a few GB of
 disk. Later builds take seconds.
 
 ```bash
-# Rendering (screenshots, PDF, screencast)
+# Rendering (screenshots, PDF)
 CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features render
 
 # Rendering plus full stealth (wreq/BoringSSL, needs cmake)
@@ -182,7 +164,7 @@ cat urls.txt | $T fetch --file - --concurrency 5
 # {"url":"...","ok":true,"status":200,"content_type":"text/html","bytes":446,"elapsed_ms":27}
 ```
 
-For rendered or DOM output in batch, use `scrape` (§6). `--screenshot` is not
+For rendered or DOM output in batch, use `scrape` (§5). `--screenshot` is not
 available in batch mode.
 
 **Multi-statement JavaScript:** an `--eval` that starts with `const` and has
@@ -207,54 +189,13 @@ testing pass `--allow-private-network`, or set
 
 ```bash
 $T fetch http://127.0.0.1:3000 --allow-private-network --dump text
-$T serve --port 9222 --allow-private-network
+$T mcp --allow-private-network
 ```
 
 Without the flag the error reads: `Access to private/internal IP address ... is
 not allowed`.
 
-## 5. CDP server: Puppeteer and Playwright
-
-```bash
-$T serve --port 9222
-# endpoint: ws://127.0.0.1:9222
-
-# Quick check, from another terminal:
-curl -s http://127.0.0.1:9222/json/version
-# {"Browser":"Chrome/145.0.0.0", ..., "webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser"}
-curl -s http://127.0.0.1:9222/json/list
-```
-
-Puppeteer:
-
-```javascript
-import puppeteer from 'puppeteer-core';
-const browser = await puppeteer.connect({ browserWSEndpoint: 'ws://127.0.0.1:9222/devtools/browser' });
-const page = await browser.newPage();
-await page.goto('https://example.com');
-console.log(await page.title());
-await browser.disconnect();
-```
-
-Playwright:
-
-```javascript
-import { chromium } from 'playwright-core';
-const browser = await chromium.connectOverCDP({ endpointURL: 'ws://127.0.0.1:9222' });
-const page = await browser.newContext().then(ctx => ctx.newPage());
-await page.goto('https://example.com');
-console.log(await page.title());
-```
-
-Render-enabled builds also support `page.screenshot()`, full page included, and
-`page.pdf()`.
-
-Useful `serve` flags: `--host` (default `127.0.0.1`), `--workers <N>` (several
-worker processes behind one port), `--max-connections` (default 128),
-`--allow-file-access` (lets CDP clients navigate `file://`, off by default),
-`--storage-dir`, `--quiet`.
-
-## 6. Parallel scraping: `scrape`
+## 5. Parallel scraping: `scrape`
 
 ```bash
 # Run JavaScript across several URLs at once, as JSON
@@ -289,7 +230,7 @@ argument. For raw batch input from stdin use `fetch --file -` (§3).
 
 It needs `telemaco-worker` in the same directory as `telemaco`, or on `PATH`.
 
-## 7. MCP, for Claude Desktop, Cursor, and others
+## 6. MCP, for Claude Desktop, Cursor, and others
 
 ```bash
 $T mcp                      # stdio; the client launches the process
@@ -334,10 +275,9 @@ printf '%s\n%s\n%s\n' \
 # -> 37
 ```
 
-## 8. Global flags and environment variables
+## 7. Global flags and environment variables
 
-These work before or after the subcommand, on `fetch`, `serve`, `scrape`, and
-`mcp`:
+These work before or after the subcommand, on `fetch`, `scrape`, and `mcp`:
 
 | Flag | Effect |
 |---|---|
@@ -363,9 +303,9 @@ Environment variables worth knowing, with the full list in
 | `TELEMACO_PROXY` | — | Default proxy for `scrape` workers |
 | `TELEMACO_MCP_MAX_CHARS` | 4000 | Characters per page from `browser_markdown` |
 
-## 9. Testing
+## 8. Testing
 
-### 9.1 CLI smoke battery, offline, about a minute
+### 8.1 CLI smoke battery, offline, about a minute
 
 End-to-end checks against a local fixture: no external network, no site to
 depend on. Paste the whole block into a terminal; each check prints `PASS` or
@@ -373,7 +313,7 @@ depend on. Paste the whole block into a terminal; each check prints `PASS` or
 
 ```bash
 T=$PWD/target/release/telemaco
-D=$(mktemp -d); PORT=8099; CDP=9223; U="http://127.0.0.1:$PORT"
+D=$(mktemp -d); PORT=8099; U="http://127.0.0.1:$PORT"
 FAILED=0; ok(){ echo "PASS: $1"; }; bad(){ echo "FAIL: $1"; FAILED=1; }
 
 # --- local fixture ---
@@ -454,13 +394,7 @@ $T fetch "$U/page2.html" --allow-private-network -q --storage-dir "$D/store" \
   --eval "document.cookie" | grep -q "tm_cookie=123" \
   && ok "--storage-dir persists cookies" || bad "storage-dir"
 
-# 12) CDP server
-$T serve --port "$CDP" --allow-private-network >/dev/null 2>&1 &
-SVR=$!; sleep 2
-curl -s "http://127.0.0.1:$CDP/json/version" | grep -q "webSocketDebuggerUrl" \
-  && ok "serve CDP" || bad "serve"
-
-# 13) MCP: stdio handshake and tool list
+# 12) MCP: stdio handshake and tool list
 printf '%s\n%s\n%s\n' \
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"1.0"}}}' \
   '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
@@ -468,7 +402,7 @@ printf '%s\n%s\n%s\n' \
   | $T mcp 2>/dev/null | grep -q '"browser_navigate"' \
   && ok "MCP tools/list" || bad "MCP"
 
-kill $HTTPD $SVR 2>/dev/null
+kill $HTTPD 2>/dev/null
 [ "$FAILED" = "0" ] && echo "ALL CHECKS PASSED" || echo "THERE WERE FAILURES"
 ```
 
@@ -476,7 +410,7 @@ The battery binds fixed ports. If a stale server already holds one, the
 requests reach the wrong process and most checks fail for a reason that has
 nothing to do with the code, so check the port before trusting a red run.
 
-### 9.2 Rust suite
+### 8.2 Rust suite
 
 **Use `cargo nextest`, not `cargo test`**: the engine holds a single V8 isolate
 per process, so the runtime tests fail under `cargo test`. Nextest runs each
@@ -492,10 +426,10 @@ cargo nextest run --release --features render --no-fail-fast
 cargo nextest run --release --features render -p telemaco-cli
 ```
 
-### 9.3 Acceptance suite
+### 8.3 Acceptance suite
 
-The behavioral gate is the suite in `acceptance/`: 41 stages that must stay at
-41/41.
+The behavioral gate is the suite in `acceptance/`: 45 stages that must stay at
+45/45.
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -505,7 +439,7 @@ It serves its own fixtures on a port picked at runtime, so it is deterministic,
 offline, and cannot collide with a server already running. Details, and how to
 add a stage, are in [acceptance/README.md](acceptance/README.md).
 
-## 10. Common problems
+## 9. Common problems
 
 | Symptom | Cause and fix |
 |---|---|
@@ -513,7 +447,7 @@ add a stage, are in [acceptance/README.md](acceptance/README.md).
 | Fetching `localhost` is refused | The SSRF gate: add `--allow-private-network` (§4) |
 | `--screenshot` unavailable | Needs a build with `--features render` (§2) |
 | Stealth looks weak | The binary was built without the `stealth` feature: rebuild with `--features render,stealth`, which needs cmake |
-| `telemaco mcp` seems to hang | It does not: a stdio server waits for JSON-RPC on stdin. Launch it from an MCP client, or pipe a request in (§7) |
+| `telemaco mcp` seems to hang | It does not: a stdio server waits for JSON-RPC on stdin. Launch it from an MCP client, or pipe a request in (§6) |
 | `scrape` will not start | `telemaco-worker` is missing next to the `telemaco` binary |
 | `scrape -` or piping into `scrape` fails | `scrape` does not read stdin: pass URLs as arguments, or use `fetch --file -` (§3) |
 | `--v8-flags` rejected after the subcommand | It is not global: put it first, e.g. `$T --v8-flags "..." fetch ...` (§3) |

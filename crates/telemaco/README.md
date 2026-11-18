@@ -2,7 +2,7 @@
 
 Embeddable Rust API for the [Telemaco](https://github.com/AlbertoBarrago/telemaco)
 headless browser. Drive a real V8 + DOM browser (`Browser`, `Page`, `Element`,
-`CookieStore`) directly from Rust, with no separate process or CDP round-trips.
+`CookieStore`) directly from Rust, with no separate process or protocol round-trips.
 
 ## Install
 

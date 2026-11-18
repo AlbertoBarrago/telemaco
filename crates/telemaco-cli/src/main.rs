@@ -25,15 +25,12 @@ struct Args {
     #[command(subcommand)]
     command: Option<Command>,
 
-    #[arg(short, long, default_value_t = 9222)]
-    port: u16,
-
     #[arg(long, global = true)]
     proxy: Option<String>,
 
     /// Enable stealth mode (consistent browser fingerprint, and with the
     /// `stealth` build feature, TLS impersonation plus tracker blocking).
-    /// Global: applies to fetch, serve, scrape, and mcp.
+    /// Global: applies to fetch, scrape, and mcp.
     #[arg(long, global = true)]
     stealth: bool,
 
@@ -41,12 +38,6 @@ struct Args {
     /// Global: applies to fetch and scrape.
     #[arg(long, global = true)]
     obey_robots: bool,
-
-    #[arg(long)]
-    user_agent: Option<String>,
-
-    #[arg(long)]
-    storage_dir: Option<std::path::PathBuf>,
 
     /// Permit fetches to loopback, RFC1918, and link-local addresses.
     /// Default is to block them (SSRF fix from #4). Use this for local
@@ -72,49 +63,6 @@ struct Args {
 
 #[derive(Subcommand)]
 enum Command {
-    Serve {
-        #[arg(short, long, default_value_t = 9222)]
-        port: u16,
-
-        // Bind address. Defaults to 127.0.0.1 (loopback only) for safety.
-        // Set to 0.0.0.0 to listen on all interfaces (e.g. inside a Docker
-        // container where you want the port to be reachable from the host
-        // via -p mapping).
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-
-        #[arg(long)]
-        proxy: Option<String>,
-
-        #[arg(long)]
-        user_agent: Option<String>,
-
-        #[arg(long, default_value_t = 1)]
-        workers: u16,
-
-        /// Maximum live CDP connections. Each connection runs on its own OS
-        /// thread with its own V8 isolates, so this bounds the server's thread
-        /// and memory footprint. Connections beyond the limit are refused with
-        /// a 503 rather than queued.
-        #[arg(long, default_value_t = telemaco_cdp::DEFAULT_MAX_CONNECTIONS)]
-        max_connections: usize,
-
-        /// Allow CDP clients to navigate to file:// URLs. Off by
-        /// default so a CDP connection cannot read arbitrary local
-        /// files. Enable only when serving local HTML for testing
-        /// and the port is on a trusted network.
-        #[arg(long)]
-        allow_file_access: bool,
-
-        #[arg(long)]
-        storage_dir: Option<std::path::PathBuf>,
-
-        /// Suppress all logs (same as on `fetch`). Useful when scraping pages
-        /// that flood the console with per-page script warnings (issue #264).
-        #[arg(long)]
-        quiet: bool,
-    },
-
     Fetch {
         // Optional so a batch run can pass URLs via --file instead. A single
         // positional URL keeps the original one-shot behaviour.
@@ -361,23 +309,6 @@ enum DumpFormat {
     Cookies,
 }
 
-fn print_banner(port: u16) {
-    println!(
-        r#"
-█████ █████ █     █████ █   █  ███   ███   ███
-  █   █     █     █     ██ ██ █   █ █     █   █
-  █   ████  █     ████  █ █ █ █████ █     █   █
-  █   █     █     █     █   █ █   █ █     █   █
-  █   █████ █████ █████ █   █ █   █  ███   ███
-
-  telemaco - headless browser v{}
-  CDP server: ws://127.0.0.1:{}/devtools/browser
-"#,
-        env!("TELEMACO_BUILD_VERSION"),
-        port
-    );
-}
-
 fn select_log_filter(verbose: bool, quiet: bool) -> &'static str {
     if verbose {
         "debug"
@@ -393,7 +324,6 @@ fn is_quiet_command(cmd: &Option<Command>) -> bool {
         cmd,
         Some(Command::Fetch { quiet: true, .. })
             | Some(Command::Scrape { quiet: true, .. })
-            | Some(Command::Serve { quiet: true, .. })
     )
 }
 
@@ -496,62 +426,6 @@ async fn main() -> anyhow::Result<()> {
     let obey_robots = args.obey_robots;
 
     match args.command {
-        Some(Command::Serve {
-            port,
-            host,
-            proxy,
-            user_agent,
-            workers,
-            max_connections,
-            allow_file_access,
-            storage_dir,
-            quiet: _,
-        }) => {
-            // Fall back to TELEMACO_PROXY so a proxy can be supplied without
-            // putting credentials on the command line. The multi-worker load
-            // balancer passes the proxy to each worker this way (issue #366).
-            let proxy = merge_proxy(global_proxy.clone(), proxy).or_else(|| {
-                std::env::var("TELEMACO_PROXY")
-                    .ok()
-                    .filter(|s| !s.is_empty())
-            });
-            print_banner(port);
-            if let Some(ref dir) = storage_dir {
-                tracing::info!("Storage dir: {}", dir.display());
-            }
-            if let Some(ref proxy) = proxy {
-                tracing::info!("Using proxy: {}", proxy);
-            }
-            if let Some(ref ua) = user_agent {
-                tracing::info!("User-Agent: {}", ua);
-            }
-            if stealth {
-                #[cfg(feature = "stealth")]
-                tracing::info!(
-                    "Stealth mode enabled (TLS fingerprint impersonation + tracker blocking)"
-                );
-                #[cfg(not(feature = "stealth"))]
-                tracing::info!("Stealth mode enabled (tracker blocking)");
-            }
-
-            if workers > 1 {
-                tracing::info!("{} worker processes", workers);
-                run_multi_worker_serve(port, host, workers, proxy, stealth, user_agent).await?;
-            } else {
-                telemaco_cdp::start_with_serve_options_and_limit(
-                    port,
-                    &host,
-                    proxy,
-                    stealth,
-                    user_agent,
-                    allow_file_access,
-                    storage_dir,
-                    args.allow_private_network,
-                    max_connections,
-                )
-                .await?;
-            }
-        }
         Some(Command::Fetch {
             url,
             dump,
@@ -750,11 +624,8 @@ async fn main() -> anyhow::Result<()> {
             return Ok(());
         }
         None => {
-            print_banner(args.port);
-            if let Some(ref proxy) = args.proxy {
-                tracing::info!("Using proxy: {}", proxy);
-            }
-            telemaco_cdp::start_with_options(args.port, args.proxy, stealth).await?;
+            <Args as clap::CommandFactory>::command().print_help()?;
+            return Ok(());
         }
     }
 
@@ -764,136 +635,6 @@ async fn main() -> anyhow::Result<()> {
     update::maybe_notify().await;
 
     Ok(())
-}
-
-async fn run_multi_worker_serve(
-    port: u16,
-    host: String,
-    workers: u16,
-    proxy: Option<String>,
-    stealth: bool,
-    user_agent: Option<String>,
-) -> anyhow::Result<()> {
-    use tokio::io::AsyncWriteExt as _;
-    use tokio::net::TcpListener;
-
-    let exe = std::env::current_exe()?;
-    let mut children = Vec::new();
-
-    for i in 0..workers {
-        let worker_port = port + 1 + i;
-        let mut cmd = std::process::Command::new(&exe);
-        cmd.arg("serve").arg("--port").arg(worker_port.to_string());
-        if let Some(ref p) = proxy {
-            // Pass the proxy (which may embed credentials) via the environment,
-            // not argv. A --proxy flag is visible in `ps`/`/proc/<pid>/cmdline`
-            // to any local user; TELEMACO_PROXY is only readable by the owner
-            // (issue #366). The worker's serve path reads this env as a fallback.
-            cmd.env("TELEMACO_PROXY", p);
-        }
-        if let Some(ref ua) = user_agent {
-            cmd.arg("--user-agent").arg(ua);
-        }
-        if stealth {
-            cmd.arg("--stealth");
-        }
-        cmd.stdout(std::process::Stdio::null());
-        cmd.stderr(std::process::Stdio::null());
-
-        let child = cmd.spawn()?;
-        tracing::info!("Worker {} on port {}", i + 1, worker_port);
-        children.push(child);
-    }
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Bind the load balancer to the requested host, not hardcoded loopback.
-    // With --host 0.0.0.0 (e.g. in Docker) the single-worker path already binds
-    // all interfaces; the multi-worker balancer must too, or the mapped port is
-    // refused from outside the container (issue #336). Workers stay on loopback
-    // and are only reached by the balancer.
-    let listener = TcpListener::bind((host.as_str(), port)).await?;
-    tracing::info!("Load balancer on {}:{}, {} workers", host, port, workers);
-
-    let mut next_worker: u16 = 0;
-
-    loop {
-        let (client_stream, peer_addr) = listener.accept().await?;
-        let worker_port = port + 1 + (next_worker % workers);
-        next_worker = next_worker.wrapping_add(1);
-
-        tracing::debug!("Routing {} to worker port {}", peer_addr, worker_port);
-
-        let mut peek_buf = [0u8; 4];
-        client_stream.peek(&mut peek_buf).await?;
-
-        if &peek_buf == b"GET " {
-            let mut full_peek = [0u8; 256];
-            let n = client_stream.peek(&mut full_peek).await?;
-            let request_line = String::from_utf8_lossy(&full_peek[..n]);
-
-            if request_line.contains("/json") {
-                let worker_addr = format!("127.0.0.1:{}", worker_port);
-                match tokio::net::TcpStream::connect(&worker_addr).await {
-                    Ok(mut worker_stream) => {
-                        tokio::spawn(async move {
-                            let std_stream = match client_stream.into_std() {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    tracing::error!(
-                                        "/json: failed to convert client to std stream: {}",
-                                        e
-                                    );
-                                    return;
-                                }
-                            };
-                            let mut client = match tokio::net::TcpStream::from_std(std_stream) {
-                                Ok(c) => c,
-                                Err(e) => {
-                                    tracing::error!(
-                                        "/json: failed to recreate tokio TcpStream: {}",
-                                        e
-                                    );
-                                    return;
-                                }
-                            };
-                            let _ = tokio::io::copy_bidirectional(&mut client, &mut worker_stream)
-                                .await;
-                        });
-                    }
-                    Err(e) => {
-                        tracing::warn!("/json worker {} unreachable: {}", worker_addr, e);
-                        tokio::spawn(async move {
-                            let mut s = client_stream;
-                            let _ = s
-                                .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-                                .await;
-                            let _ = s.shutdown().await;
-                        });
-                    }
-                }
-                continue;
-            }
-        }
-
-        let worker_addr = format!("127.0.0.1:{}", worker_port);
-        tokio::spawn(async move {
-            match tokio::net::TcpStream::connect(&worker_addr).await {
-                Ok(mut worker_stream) => {
-                    let mut client = client_stream;
-                    let _ = tokio::io::copy_bidirectional(&mut client, &mut worker_stream).await;
-                }
-                Err(e) => {
-                    tracing::warn!("worker {} unreachable: {}", worker_addr, e);
-                    let mut s = client_stream;
-                    let _ = s
-                        .write_all(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-                        .await;
-                    let _ = s.shutdown().await;
-                }
-            }
-        });
-    }
 }
 
 async fn settle_page(page: &mut Page, wait_secs: u64, fixed: bool) {
@@ -2572,12 +2313,6 @@ mod tests {
     }
 
     #[test]
-    fn parsed_serve_command_is_not_quiet() {
-        let args = Args::try_parse_from(["telemaco", "serve"]).expect("clap should accept serve");
-        assert!(!is_quiet_command(&args.command));
-    }
-
-    #[test]
     fn no_subcommand_is_not_quiet() {
         assert!(!is_quiet_command(&None));
     }
@@ -2603,20 +2338,6 @@ mod tests {
         let args = Args::try_parse_from(["telemaco", "fetch", "https://example.com"])
             .expect("clap should accept fetch without --v8-flags");
         assert!(args.v8_flags.is_none());
-    }
-
-    #[test]
-    fn parsed_v8_flags_with_serve_subcommand() {
-        let args = Args::try_parse_from([
-            "telemaco",
-            "--v8-flags",
-            "--max-old-space-size=2048",
-            "serve",
-            "--port",
-            "9333",
-        ])
-        .expect("clap should accept --v8-flags with serve");
-        assert_eq!(args.v8_flags.as_deref(), Some("--max-old-space-size=2048"));
     }
 
     #[test]

@@ -9,7 +9,7 @@ The page layer. It owns `BrowserContext` (cookies, storage, proxy and network
 options shared by pages) and `Page` (navigation, lifecycle and wait conditions,
 JS evaluation, request interception, and with `render`, screenshots and PDF). It
 sits above `telemaco-dom`, `telemaco-net` and `telemaco-js`, and is what
-`telemaco-cdp`, `telemaco-mcp`, `telemaco-cli` and the embeddable `telemaco`
+`telemaco-mcp`, `telemaco-cli` and the embeddable `telemaco`
 crate call. Cross-crate calls go through the layer above, never sideways.
 
 Most users want the friendlier
@@ -52,7 +52,6 @@ println!("{links} links");
 ## Invariant
 
 One V8 isolate exists per process, so concurrent page work must be serialized by
-the caller. `telemaco-cdp` does this with a per-connection lock; the `telemaco`
-crate does it for you.
+the caller. The `telemaco` crate does it for you.
 
 Part of [Telemaco](https://github.com/AlbertoBarrago/telemaco).

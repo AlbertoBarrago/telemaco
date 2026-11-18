@@ -36,8 +36,8 @@ body:
     attributes:
       label: How are you using telemaco?
       options:
-        - CLI (fetch / serve / scrape / mcp)
-        - CDP server with Puppeteer or Playwright
+        - CLI (fetch / scrape)
+        - MCP server
         - Embedded Rust library (telemaco crate)
         - Other
     validations:
@@ -49,8 +49,7 @@ body:
       options:
         - JavaScript or DOM behavior
         - Rendering, layout, or paint
-        - Screenshot, screencast, or PDF output
-        - CDP, Puppeteer, or Playwright compatibility
+        - Screenshot or PDF output
         - Networking, cookies, or proxies
         - CLI or MCP
         - Build, packaging, or installation
@@ -84,7 +83,7 @@ body:
     id: repro
     attributes:
       label: Reproduction
-      description: A URL, an `--eval` snippet, or a short CDP sequence. Multi-statement `--eval` that starts with `const` returns null, so wrap it in an IIFE.
+      description: A URL, an `--eval` snippet, or a short MCP tool-call sequence. Multi-statement `--eval` that starts with `const` returns null, so wrap it in an IIFE.
       placeholder: |
         telemaco fetch https://example.com --eval "(function(){ return document.title; })()"
     validations:
@@ -105,10 +104,10 @@ body:
     id: render_details
     attributes:
       label: Rendering details
-      description: For layout, screenshot, screencast, or PDF bugs, include viewport size, device scale factor, output options, and before/after or Chrome reference images. Drag images or output files here.
+      description: For layout, screenshot, or PDF bugs, include viewport size, device scale factor, output options, and before/after or Chrome reference images. Drag images or output files here.
       placeholder: |
         Viewport: 1280x720, DPR 1
-        Output: full-page PNG / A4 PDF / screencast frame
+        Output: full-page PNG / A4 PDF
         Options: --screenshot page.png, printBackground=true, etc.
     validations:
       required: false

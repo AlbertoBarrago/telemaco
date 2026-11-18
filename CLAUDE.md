@@ -3,9 +3,9 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Telemaco is a headless browser engine in Rust: real JavaScript through V8
-(`deno_core`), a real DOM tree, its own layout and paint pipeline, and the
-Chrome DevTools Protocol. It is a drop-in replacement for headless Chrome with
-Puppeteer and Playwright, targeting web scraping and AI-agent automation.
+(`deno_core`), a real DOM tree, and its own layout and paint pipeline. It
+targets web scraping and AI-agent automation through the CLI, the MCP server,
+and an embeddable Rust library.
 
 **Read `AGENTS.md` first.** It is the authoritative, detailed guide: build and
 test commands, architecture, conventions, rendering verification, gotchas, and
@@ -41,7 +41,7 @@ cargo nextest run --release --features render --no-fail-fast
 ```
 
 The authoritative behavioral gate is the acceptance suite in `acceptance/`
-(46 stages, must stay 46/46):
+(45 stages, must stay 45/45):
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -54,14 +54,13 @@ style in the files you edit.
 
 ## Architecture
 
-Workspace of ten crates, one layer per crate; cross-crate calls go through the
+Workspace of nine crates, one layer per crate; cross-crate calls go through the
 layer above, not sideways. All async is `tokio` with a `LocalSet` because V8 is
 `!Send`. All DOM ops go through `op_dom` to keep the JS/Rust boundary narrow.
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `serve` (CDP server), `scrape`, `mcp`, `remote` |
-| `telemaco-cdp` | Chrome DevTools Protocol server (WebSocket) |
+| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp`, `remote` |
 | `telemaco-js` | V8/`deno_core` runtime; `js/bootstrap.js` DOM shim + `src/ops.rs` bridge |
 | `telemaco-dom` | DOM tree (`src/tree.rs`) |
 | `telemaco-net` | HTTP client, stealth client, cookie jar, robots cache, tracker blocklist |
@@ -84,8 +83,6 @@ Key invariants (see `AGENTS.md` for detail):
 - **SSRF by default**: loopback / RFC1918 / link-local fetches are blocked. Use
   `--allow-private-network` (or `TELEMACO_ALLOW_PRIVATE_NETWORK=1`) for local
   testing.
-- **`canAccessOpener` must be in every `TargetInfo` payload**, or strict CDP
-  clients (chromiumoxide) panic.
 - **Multi-statement `--eval` starting with `const` returns `null`** (V8 empty
   completion value). Wrap in an IIFE.
 
@@ -111,7 +108,7 @@ per-agent rules and module layout.
   only for real spec edge cases.
 - Commits/PRs/comments: short and factual, no em dashes, no AI filler.
 - The `skills/telemaco/SKILL.md` skill documents operating and validating the
-  binary (build variants, stealth, CDP, MCP, visual comparison).
+  binary (build variants, stealth, MCP, visual comparison).
 
 <!-- TELEMACO_START -->
 ## Web access: use Telemaco

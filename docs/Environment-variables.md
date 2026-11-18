@@ -19,7 +19,7 @@ Per-process equivalent: `--allow-private-network` on any subcommand.
 Hard ceiling on a single navigation. Default 30000 (30 seconds). Applies to `Page.navigate` and the CLI `fetch` command.
 
 ```bash
-TELEMACO_NAV_TIMEOUT_MS=60000 telemaco serve
+TELEMACO_NAV_TIMEOUT_MS=60000 telemaco mcp
 ```
 
 ### `TELEMACO_NAV_CHAIN_LIMIT`
@@ -31,15 +31,15 @@ A zero is raised to 1. This loads the requested document. If the page wants to c
 The time budget is not tied to this limit. A longer chain usually also needs a higher `TELEMACO_NAV_TIMEOUT_MS`, because its default of 30 seconds applies to the whole chain and not to the individual document.
 
 ```bash
-TELEMACO_NAV_CHAIN_LIMIT=20 telemaco serve
+TELEMACO_NAV_CHAIN_LIMIT=20 telemaco mcp
 ```
 
 ### `TELEMACO_SCRIPT_DEADLINE_MS`
 
-Soft deadline for the complete page script-execution phase, including classic scripts and ES modules. Default 30000 (30 seconds). Raise it for a heavy SPA whose initial module is responsible for mounting an otherwise empty document. The engine also uses this value as a hard V8 watchdog budget, with a one-second grace period, so a synchronous script cannot run forever. The page's navigation timeout caps it (`fetch --timeout`, `TELEMACO_NAV_TIMEOUT_MS`, or the timeout a CDP or MCP client sets), so raising it above the navigation timeout has no effect.
+Soft deadline for the complete page script-execution phase, including classic scripts and ES modules. Default 30000 (30 seconds). Raise it for a heavy SPA whose initial module is responsible for mounting an otherwise empty document. The engine also uses this value as a hard V8 watchdog budget, with a one-second grace period, so a synchronous script cannot run forever. The page's navigation timeout caps it (`fetch --timeout`, `TELEMACO_NAV_TIMEOUT_MS`, or the timeout an MCP client sets), so raising it above the navigation timeout has no effect.
 
 ```bash
-TELEMACO_SCRIPT_DEADLINE_MS=60000 telemaco serve
+TELEMACO_SCRIPT_DEADLINE_MS=60000 telemaco mcp
 ```
 
 ### `TELEMACO_MAX_DOM_NODES`
@@ -55,25 +55,17 @@ TELEMACO_MAX_DOM_NODES=300000 telemaco scrape url1 url2 --concurrency 25
 Per-module graph-loading and evaluation budget for modules that enhance an already-rendered page. Default 3000 (3 seconds). Raise it when a module such as the Vite HMR client legitimately needs longer to evaluate:
 
 ```bash
-TELEMACO_MODULE_BUDGET_MS=10000 telemaco serve
+TELEMACO_MODULE_BUDGET_MS=10000 telemaco mcp
 ```
 
 This shorter budget applies when the document body already contains more than 50 descendant nodes, where modules are normally progressive enhancement and should not delay navigation indefinitely. For an unmounted SPA shell, Telemaco instead gives each module the full `TELEMACO_SCRIPT_DEADLINE_MS` budget so the app has time to mount. Module network requests remain independently bounded by `TELEMACO_FETCH_TIMEOUT_MS`.
-
-### `TELEMACO_CDP_COMMAND_TIMEOUT_MS`
-
-Per-command deadline for the CDP server. A hung page (a runaway `Runtime.evaluate`, a synchronous DOM op) is terminated after this budget so one bad session cannot hold the shared V8 lock and stall the others. Default 60000 (60 seconds); `0` disables it. Navigation self-bounds via `TELEMACO_NAV_TIMEOUT_MS` well under this.
-
-```bash
-TELEMACO_CDP_COMMAND_TIMEOUT_MS=30000 telemaco serve
-```
 
 ### `TELEMACO_FETCH_TIMEOUT_MS`
 
 Request timeout for scripted `fetch()`, `XMLHttpRequest`, and ES-module loads. Without it a request to a server that accepts the connection but never responds (including a CORS preflight) hangs forever and the XHR is stuck with no completion event. Default 30000 (30 seconds).
 
 ```bash
-TELEMACO_FETCH_TIMEOUT_MS=15000 telemaco serve
+TELEMACO_FETCH_TIMEOUT_MS=15000 telemaco mcp
 ```
 
 ### `TELEMACO_PROXY`
@@ -93,7 +85,7 @@ These tune the browser identity the engine presents so it stays internally consi
 Pins the process timezone before V8/ICU reads it, so `Date` (`getTimezoneOffset`, `toString`) and `Intl.DateTimeFormat` report one consistent zone. Default `Europe/Berlin`. Set it to match the exit IP's region.
 
 ```bash
-TELEMACO_TIMEZONE=America/New_York telemaco serve
+TELEMACO_TIMEZONE=America/New_York telemaco mcp
 ```
 
 ### `TELEMACO_GEOLOCATION`
@@ -101,7 +93,7 @@ TELEMACO_TIMEZONE=America/New_York telemaco serve
 Override the coordinates the `navigator.geolocation` shim reports, as `lat,lon`. Without it the shim reports a fixed default. Keep it consistent with `TELEMACO_TIMEZONE` and the proxy region.
 
 ```bash
-TELEMACO_GEOLOCATION="40.7128,-74.0060" telemaco serve
+TELEMACO_GEOLOCATION="40.7128,-74.0060" telemaco mcp
 ```
 
 ### `TELEMACO_PROFILE`
@@ -109,7 +101,7 @@ TELEMACO_GEOLOCATION="40.7128,-74.0060" telemaco serve
 Pin a specific browser profile from the built-in pool by index (`0`-based). Each profile keeps `navigator.platform`, `userAgentData`, the UA string, and the GPU renderer internally consistent. Without it a single stable profile is used.
 
 ```bash
-TELEMACO_PROFILE=2 telemaco serve
+TELEMACO_PROFILE=2 telemaco mcp
 ```
 
 ### `TELEMACO_ROTATE_PROFILE`
@@ -117,7 +109,7 @@ TELEMACO_PROFILE=2 telemaco serve
 Opt into picking a random profile per browser context instead of the stable default. Leave it off when you pin a TLS fingerprint, proxy region, or timezone, since a rotated profile would no longer match those.
 
 ```bash
-TELEMACO_ROTATE_PROFILE=1 telemaco serve
+TELEMACO_ROTATE_PROFILE=1 telemaco mcp
 ```
 
 ## MCP
@@ -177,9 +169,9 @@ TELEMACO_TAILCAT_BIN=/opt/tailcat/bin/tailcat telemaco remote status tcXXXX
 Standard `tracing` filter. Common settings:
 
 ```bash
-RUST_LOG=telemaco=info telemaco serve
-RUST_LOG=telemaco=debug telemaco serve
-RUST_LOG=telemaco_cdp=trace,telemaco_browser=debug telemaco serve
+RUST_LOG=telemaco=info telemaco mcp
+RUST_LOG=telemaco=debug telemaco mcp
+RUST_LOG=telemaco_mcp=trace,telemaco_browser=debug telemaco mcp
 ```
 
 `--verbose` on the CLI is equivalent to `RUST_LOG=telemaco=info`.
@@ -199,7 +191,7 @@ OPENSSL_NO_VENDOR=1 cargo build --release --features render
 V8 flags are passed via `--v8-flags`, not environment variables:
 
 ```bash
-telemaco serve --v8-flags "--max-old-space-size=2048 --expose-gc"
+telemaco --v8-flags "--max-old-space-size=2048 --expose-gc" mcp
 ```
 
 Defaults are `--max-old-space-size=4096 --max-semi-space-size=4 --optimize-for-size` on 64-bit systems (a 4 GB old-space ceiling, a capped young generation, and codegen tuned for a smaller footprint to cut RSS). Anything you pass with `--v8-flags` is appended after these, and V8 uses the last value for a repeated flag, so your value wins for that flag while the other defaults stay in effect.

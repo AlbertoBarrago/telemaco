@@ -1,6 +1,5 @@
-//! Shared markdown extraction script used by the LP.getMarkdown CDP method
-//! and the CLI `--dump markdown` mode. Lives in telemaco-browser so both
-//! telemaco-cdp and telemaco-cli can call it without depending on each other.
+//! Shared markdown extraction script used by the CLI `--dump markdown` mode
+//! and the MCP server, so both produce the same markdown.
 
 /// JS expression that walks `document.body` and returns a markdown string.
 /// Must be evaluated against a Page that has a fully-bootstrapped JS runtime.
