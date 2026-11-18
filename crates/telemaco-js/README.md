@@ -22,7 +22,7 @@ crate instead of embedding this runtime yourself.
 | Feature | Effect |
 |---------|--------|
 | `stealth` | Enables `telemaco-net/stealth` so scripted `fetch()` and XHR go through the wreq/BoringSSL client and carry the same TLS fingerprint and client hints as stealth navigation. |
-| `render` | Enables `telemaco-render` with its `paint` feature: real box geometry for `getBoundingClientRect`, `elementFromPoint` and `offset*`, plus PNG rasterization (`screenshot_png` and friends are re-exported here). Off by default to keep the scraping build lean. |
+| `render` | Enables `telemaco-render`: real box geometry for `getBoundingClientRect`, `elementFromPoint` and `offset*`, plus PNG rasterization (`screenshot_png` and friends are re-exported here). Off by default to keep the scraping build lean. |
 
 ## Invariants
 

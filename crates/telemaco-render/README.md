@@ -2,8 +2,8 @@
 
 Optional scoped render layer for
 [Telemaco](https://github.com/AlbertoBarrago/telemaco): selector cascade,
-computed style, retained layout, and with the `paint` feature, text shaping and
-raster output for screenshots and PDF.
+computed style, retained layout, text shaping, and raster output for
+screenshots and PDF.
 
 ## Place in the workspace
 
