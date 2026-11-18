@@ -3,3 +3,4 @@ target/
 build.log
 .vscode/
 .mcp.json
+__pycache__/
