@@ -15,20 +15,10 @@ pub struct BrowserContext {
     pub robots_cache: Arc<RobotsCache>,
     pub obey_robots: bool,
     pub stealth: bool,
-    /// When true, CDP-driven navigation to file:// URLs is permitted.
-    /// Default is false: a remote CDP client cannot point the browser
-    /// at /etc/shadow even if Telemaco is running as a privileged user.
-    /// Flip on via `telemaco serve --allow-file-access` for legitimate
-    /// local-HTML testing workflows. The CLI's own `telemaco fetch
-    /// file://...` path is unaffected because it does not go through
-    /// the CDP server.
-    pub allow_file_access: bool,
     pub storage_dir: Option<PathBuf>,
     /// When true, the http client allows fetching localhost / RFC1918 /
     /// link-local addresses. Set via `--allow-private-network` (issue #33).
-    /// Independent of `allow_file_access` because they cover different threat
-    /// models: file:// is a local file-system read, while private-network is
-    /// the broader SSRF gate from issue #4.
+    /// This is the SSRF gate from issue #4.
     pub allow_private_network: bool,
 }
 
@@ -130,7 +120,6 @@ impl BrowserContext {
             robots_cache: Arc::new(RobotsCache::new()),
             obey_robots: false,
             stealth,
-            allow_file_access: false,
             storage_dir,
             allow_private_network,
         }
@@ -187,7 +176,6 @@ impl BrowserContext {
             robots_cache: Arc::new(RobotsCache::new()),
             obey_robots: self.obey_robots,
             stealth: self.stealth,
-            allow_file_access: self.allow_file_access,
             storage_dir: persistent.then(|| self.storage_dir.clone()).flatten(),
             allow_private_network: self.allow_private_network,
         }

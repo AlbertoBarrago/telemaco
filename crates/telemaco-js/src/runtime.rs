@@ -14,8 +14,7 @@ use crate::module_loader::{ModuleLoadActivity, TelemacoModuleLoader};
 #[cfg(all(test, feature = "render"))]
 use crate::ops::ensure_prepared_render;
 use crate::ops::{
-    build_extension, node_is_script, TelemacoState, RuntimeEvent, RuntimeExceptionEvent,
-    StoredNetworkResponseBody,
+    build_extension, node_is_script, TelemacoState, StoredNetworkResponseBody,
 };
 #[cfg(feature = "render")]
 use crate::ops::{
@@ -933,105 +932,6 @@ impl TelemacoJsRuntime {
 
     pub fn take_pending_navigation(&self) -> Option<(String, String, String)> {
         self.state.borrow_mut().pending_navigation.take()
-    }
-
-    pub fn take_pending_binding_calls(&self) -> Vec<(String, String)> {
-        std::mem::take(&mut self.state.borrow_mut().pending_binding_calls)
-    }
-
-    pub fn take_pending_runtime_events(&mut self) -> Vec<RuntimeEvent> {
-        let events: Vec<_> = self
-            .state
-            .borrow_mut()
-            .pending_runtime_events
-            .drain(..)
-            .collect();
-        for event in &events {
-            let RuntimeEvent::Console(event) = event else {
-                continue;
-            };
-            for arg in &event.args {
-                let Some(object_id) = arg.get("objectId").and_then(|value| value.as_str()) else {
-                    continue;
-                };
-                let frame_id = object_id
-                    .strip_prefix("console-")
-                    .and_then(|rest| rest.split_once('-'))
-                    .and_then(|(frame_id, _)| frame_id.parse::<u32>().ok())
-                    .unwrap_or(0);
-                let retrieval = if frame_id == 0 {
-                    format!("globalThis.__telemaco_objects['{object_id}']")
-                } else {
-                    format!(
-                        "globalThis.__telemaco_frameObjects[{frame_id}]?.window?.__telemaco_objects['{object_id}']"
-                    )
-                };
-                self.object_store.insert(object_id.to_string(), retrieval);
-            }
-        }
-        events
-    }
-
-    pub fn set_runtime_events_enabled(&self, enabled: bool) {
-        self.state.borrow_mut().runtime_events_enabled = enabled;
-    }
-
-    fn record_uncaught_exception(&self, error: &deno_core::error::JsError, fallback_url: &str) {
-        let mut state = self.state.borrow_mut();
-        if !state.runtime_events_enabled {
-            return;
-        }
-        state.runtime_exception_counter = state.runtime_exception_counter.saturating_add(1);
-        let first = error.frames.first();
-        let url = first
-            .and_then(|frame| frame.file_name.clone())
-            .filter(|url| !url.is_empty())
-            .unwrap_or_else(|| fallback_url.to_string());
-        let line_number = first
-            .and_then(|frame| frame.line_number)
-            .unwrap_or(1)
-            .saturating_sub(1);
-        let column_number = first
-            .and_then(|frame| frame.column_number)
-            .unwrap_or(1)
-            .saturating_sub(1);
-        let stack_trace = error
-            .frames
-            .iter()
-            .map(|frame| {
-                serde_json::json!({
-                    "functionName": frame.function_name.as_deref().unwrap_or(""),
-                    "scriptId": "",
-                    "url": frame.file_name.as_deref().unwrap_or(fallback_url),
-                    "lineNumber": frame.line_number.unwrap_or(1).saturating_sub(1),
-                    "columnNumber": frame.column_number.unwrap_or(1).saturating_sub(1),
-                })
-            })
-            .collect();
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs_f64()
-            * 1_000.0;
-        if state.pending_runtime_events.len() >= 1_024 {
-            state.pending_runtime_events.pop_front();
-        }
-        let exception_id = state.runtime_exception_counter;
-        state
-            .pending_runtime_events
-            .push_back(RuntimeEvent::Exception(RuntimeExceptionEvent {
-                exception_id,
-                name: error.name.clone().unwrap_or_else(|| "Error".to_string()),
-                description: error
-                    .stack
-                    .clone()
-                    .unwrap_or_else(|| error.exception_message.clone()),
-                url,
-                line_number,
-                column_number,
-                stack_trace,
-                timestamp,
-            }));
     }
 
     pub fn get_network_response_body(&self, request_id: &str) -> Option<StoredNetworkResponseBody> {
@@ -2340,7 +2240,6 @@ impl TelemacoJsRuntime {
 
     fn execute_classic_script(&mut self, name: &str, source: &str) -> Result<(), String> {
         self.begin_javascript_task();
-        let script_url = name.to_string();
         // JsRuntime::execute_script in deno_core 0.350 restricts `name` to a
         // &'static str. Browser script URLs are runtime data, and V8 uses this
         // origin as import()'s referrer, so compile in the runtime's main
@@ -2400,15 +2299,7 @@ impl TelemacoJsRuntime {
             }
             Ok(())
         })();
-        let result = match result {
-            Ok(()) => Ok(()),
-            Err((message, error)) => {
-                if let Some(error) = error.as_ref() {
-                    self.record_uncaught_exception(error, &script_url);
-                }
-                Err(message)
-            }
-        };
+        let result = result.map_err(|(message, _error)| message);
         self.finish_heap_checked(result)
     }
 
@@ -3102,13 +2993,6 @@ impl TelemacoJsRuntime {
     /// (issue #301). Backs `--dump assets`.
     pub fn fetched_urls(&self) -> Vec<String> {
         self.state.borrow().fetched_urls.clone()
-    }
-
-    /// Drain the network events recorded for script-initiated requests
-    /// (fetch/XHR/dynamic resource). The Page moves these into its own
-    /// network_events so the CDP layer emits Network events for them (#406).
-    pub fn take_js_network_events(&self) -> Vec<crate::ops::JsNetworkEvent> {
-        std::mem::take(&mut self.state.borrow_mut().js_network_events)
     }
 
     pub fn dom_ref(&self) -> Option<std::cell::Ref<'_, Option<DomTree>>> {

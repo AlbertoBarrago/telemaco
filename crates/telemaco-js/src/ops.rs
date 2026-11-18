@@ -65,24 +65,6 @@ pub struct StoredNetworkResponseBody {
     pub base64_encoded: bool,
 }
 
-/// A network request made from page JS (fetch()/XHR/dynamic resource) recorded
-/// so the CDP layer can emit Network.requestWillBeSent / responseReceived for
-/// it. Static navigation subresources go through Page::record_network_event;
-/// this is the parallel channel for script-initiated requests, which run in the
-/// V8 op layer and would otherwise never surface as CDP Network events (#406).
-#[derive(Debug, Clone)]
-pub struct JsNetworkEvent {
-    /// Matches the `fetch-{N}` id under which the body is stored, so CDP
-    /// Network.getResponseBody resolves for the same request.
-    pub request_id: String,
-    pub url: String,
-    pub method: String,
-    pub status: u16,
-    pub response_headers: HashMap<String, String>,
-    pub body_size: usize,
-    pub timestamp: f64,
-}
-
 #[cfg(feature = "render")]
 pub use telemaco_render::ImageRequestProfile;
 
@@ -125,15 +107,6 @@ pub struct TelemacoState {
     pub intercept_tx: Option<tokio::sync::mpsc::UnboundedSender<InterceptedRequest>>,
     pub intercept_counter: u64,
     pub intercept_enabled: bool,
-    // Queue of (binding_name, payload) calls made by page JS via the
-    // `op_binding_called` op. Drained by the CDP layer after each dispatch
-    // and emitted as `Runtime.bindingCalled` events.
-    pub pending_binding_calls: Vec<(String, String)>,
-    // Console calls and uncaught script exceptions, in occurrence order.
-    // The CDP layer drains this after commands and autonomous event-loop turns.
-    pub pending_runtime_events: VecDeque<RuntimeEvent>,
-    pub runtime_events_enabled: bool,
-    pub runtime_exception_counter: u64,
     pub network_response_bodies: HashMap<String, StoredNetworkResponseBody>,
     pub network_response_body_order: VecDeque<String>,
     pub network_response_body_counter: u64,
@@ -141,14 +114,10 @@ pub struct TelemacoState {
     // order. Surfaced by `--dump assets` so resources pulled in by script, not
     // just static DOM attributes, are listed (issue #301).
     pub fetched_urls: Vec<String>,
-    // Network events for script-initiated requests (fetch/XHR/dynamic resource),
-    // drained by the Page into its network_events so the CDP layer emits
-    // Network.requestWillBeSent / responseReceived for them (issue #406).
-    pub js_network_events: Vec<JsNetworkEvent>,
     // Frame documents that have been fetched and are waiting for a realm.
     // Building one needs the whole runtime, which an op cannot reach, so
     // `op_frame_document_ready` queues here and the Page drains it between
-    // event loop turns. Same shape as `pending_binding_calls`.
+    // event loop turns.
     pub pending_frames: Vec<PendingFrame>,
     /// Total URL and HTML bytes held by `pending_frames`.
     pub pending_frame_bytes: usize,
@@ -312,15 +281,10 @@ impl TelemacoState {
             intercept_tx: None,
             intercept_counter: 0,
             intercept_enabled: false,
-            pending_binding_calls: Vec::new(),
-            pending_runtime_events: VecDeque::new(),
-            runtime_events_enabled: false,
-            runtime_exception_counter: 0,
             network_response_bodies: HashMap::new(),
             network_response_body_order: VecDeque::new(),
             network_response_body_counter: 0,
             fetched_urls: Vec::new(),
-            js_network_events: Vec::new(),
             pending_frames: Vec::new(),
             pending_frame_bytes: 0,
             frame_id_counter: 0,
@@ -374,31 +338,6 @@ impl TelemacoState {
             write_stream: RefCell::new(None),
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct RuntimeConsoleEvent {
-    pub kind: String,
-    pub args: Vec<serde_json::Value>,
-    pub timestamp: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct RuntimeExceptionEvent {
-    pub exception_id: u64,
-    pub name: String,
-    pub description: String,
-    pub url: String,
-    pub line_number: i64,
-    pub column_number: i64,
-    pub stack_trace: Vec<serde_json::Value>,
-    pub timestamp: f64,
-}
-
-#[derive(Debug, Clone)]
-pub enum RuntimeEvent {
-    Console(RuntimeConsoleEvent),
-    Exception(RuntimeExceptionEvent),
 }
 
 pub(crate) fn node_is_script(dom: &DomTree, node_id: NodeId) -> bool {
@@ -2170,17 +2109,7 @@ fn compare_node_order(dom: &DomTree, a: NodeId, b: NodeId) -> i32 {
 }
 
 #[op2(fast)]
-fn op_runtime_events_enabled(state: &OpState) -> bool {
-    state.borrow::<SharedState>().borrow().runtime_events_enabled
-}
-
-#[op2(fast)]
-fn op_console_msg(
-    state: &OpState,
-    #[string] level: &str,
-    #[string] msg: &str,
-    #[string] args_json: &str,
-) {
+fn op_console_msg(#[string] level: &str, #[string] msg: &str) {
     // React/Next.js hydration mismatches (e.g. "Minified React error #418") are
     // false alarms: the server-rendered HTML differs from the client render for
     // reasons unrelated to the engine (non-deterministic ids, streaming SSR), and
@@ -2194,29 +2123,6 @@ fn op_console_msg(
         "error" => tracing::error!(target: "telemaco::console", "{}", msg),
         _ => tracing::info!(target: "telemaco::console", "{}", msg),
     }
-
-    let page = state.borrow::<SharedState>().clone();
-    let mut page = page.borrow_mut();
-    if !page.runtime_events_enabled {
-        return;
-    }
-    let Ok(args) = serde_json::from_str::<Vec<serde_json::Value>>(args_json) else {
-        return;
-    };
-    if page.pending_runtime_events.len() >= 1_024 {
-        page.pending_runtime_events.pop_front();
-    }
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-        * 1_000.0;
-    page.pending_runtime_events
-        .push_back(RuntimeEvent::Console(RuntimeConsoleEvent {
-            kind: level.to_string(),
-            args,
-            timestamp,
-        }));
 }
 
 // Fallback cache for runtimes that have no owning TelemacoHttpClient, such as
@@ -2881,28 +2787,6 @@ async fn op_fetch_url(
                     gs.network_response_bodies.remove(&oldest);
                 }
             }
-        }
-        // Record a network event so the CDP layer emits requestWillBeSent /
-        // responseReceived for this script-initiated request (#406). Keyed by
-        // the same fetch-{N} id as the stored body so Network.getResponseBody
-        // resolves. Capped to keep a long-lived page from growing unbounded.
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs_f64();
-        gs.js_network_events.push(JsNetworkEvent {
-            request_id: request_id.clone(),
-            url: url.clone(),
-            method: method.clone(),
-            status,
-            response_headers: resp_headers.clone(),
-            body_size: resp_bytes.len(),
-            timestamp,
-        });
-        const MAX_JS_NETWORK_EVENTS: usize = 4096;
-        if gs.js_network_events.len() > MAX_JS_NETWORK_EVENTS {
-            let overflow = gs.js_network_events.len() - MAX_JS_NETWORK_EVENTS;
-            gs.js_network_events.drain(0..overflow);
         }
         request_id
     };
@@ -3696,10 +3580,8 @@ mod tests {
 
 fn validate_fetch_url(url: &url::Url, allow_private_network: bool) -> Result<(), String> {
     let scheme = url.scheme();
-    // file:// is denied by default here, matching Page.navigate /
-    // Target.createTarget (which gate it behind --allow-file-access). The
-    // transports cannot fetch file:// anyway, so a page never reaches the
-    // filesystem through fetch()/XHR.
+    // file:// is denied here. The transports cannot fetch file:// anyway, so
+    // a page never reaches the filesystem through fetch()/XHR.
     if scheme != "http" && scheme != "https" {
         return Err(format!(
             "Forbidden URL scheme '{}' - only http and https are allowed",
@@ -3935,17 +3817,6 @@ fn op_async_runtime_available() -> bool {
 #[op2(async)]
 async fn op_posted_task() {
     tokio::task::yield_now().await;
-}
-
-// Records a binding call from page JS. The CDP layer drains this queue
-// after every dispatch and emits one `Runtime.bindingCalled` event per
-// entry, that's how puppeteer's `page.exposeFunction` callbacks fire.
-#[op2(fast)]
-fn op_binding_called(state: &OpState, #[string] name: &str, #[string] payload: &str) {
-    let gs = state.borrow::<SharedState>().clone();
-    let mut gs = gs.borrow_mut();
-    gs.pending_binding_calls
-        .push((name.to_string(), payload.to_string()));
 }
 
 /// Real WebCrypto `crypto.subtle.digest`. `algorithm` is the SubtleCrypto
@@ -4768,7 +4639,6 @@ pub fn build_extension() -> Extension {
         op_script_try_start(),
         op_shadow_attach(),
         op_shadow_root_info(),
-        op_runtime_events_enabled(),
         op_console_msg(),
         op_fetch_url(),
         op_get_cookies(),
@@ -4779,7 +4649,6 @@ pub fn build_extension() -> Extension {
         op_sleep(),
         op_async_runtime_available(),
         op_posted_task(),
-        op_binding_called(),
         op_subtle_digest(),
         op_subtle_hmac(),
         op_subtle_aes_gcm(),
