@@ -16,7 +16,7 @@ A build produces two binaries in `target/release/`:
 
 | Binary | What it does |
 |---|---|
-| `telemaco` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update`, `remote` |
+| `telemaco` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update` |
 | `telemaco-worker` | Worker for parallel scraping; must sit next to `telemaco` for `scrape` |
 
 Which features a binary has depends on how it was built. `--features render`

@@ -418,7 +418,7 @@ surface: screenshot, PDF, and MCP all keep working.
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update`, `remote` |
+| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update` |
 | `telemaco-js` | V8/`deno_core` runtime and DOM ops bridge |
 | `telemaco-dom` | DOM tree |
 | `telemaco-net` | HTTP client, stealth transport, cookie jar, robots cache, tracker blocklist |
