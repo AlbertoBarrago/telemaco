@@ -41,7 +41,7 @@ cargo nextest run --release --features render --no-fail-fast
 ```
 
 The authoritative behavioral gate is the acceptance suite in `acceptance/`
-(45 stages, must stay 45/45):
+(44 stages, must stay 44/44):
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -60,7 +60,7 @@ layer above, not sideways. All async is `tokio` with a `LocalSet` because V8 is
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp` |
+| `telemaco-cli` | CLI: `fetch`, `mcp` |
 | `telemaco-js` | V8/`deno_core` runtime; `js/bootstrap.js` DOM shim + `src/ops.rs` bridge |
 | `telemaco-dom` | DOM tree (`src/tree.rs`) |
 | `telemaco-net` | HTTP client, stealth client, cookie jar, robots cache, tracker blocklist |

@@ -104,26 +104,6 @@ fn obey_robots_is_global_and_blocks_fetch_before_target_request() {
 }
 
 #[test]
-fn obey_robots_reaches_scrape_worker_and_blocks_target_request() {
-    let server = RobotsServer::spawn();
-    let url = server.url("/private/page");
-    let output = telemaco(&[
-        "--obey-robots",
-        "--allow-private-network",
-        "scrape",
-        "--quiet",
-        "--timeout",
-        "5",
-        &url,
-    ]);
-
-    assert!(output.status.success(), "scrape reports per-URL errors as JSON");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Blocked by robots.txt"), "stdout: {stdout}");
-    assert_eq!(server.paths(), vec!["/robots.txt"]);
-}
-
-#[test]
 fn fetch_without_obey_robots_keeps_existing_navigation_behavior() {
     let server = RobotsServer::spawn();
     let url = server.url("/private/page");

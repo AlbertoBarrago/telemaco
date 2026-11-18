@@ -49,7 +49,7 @@ single V8 isolate per process, so the runtime tests fail under it. `nextest`
 runs each test in its own process, which is the only supported way.
 
 The authoritative behavioral gate is the **acceptance suite** in
-`acceptance/`, 45 stages that must stay at 45/45:
+`acceptance/`, 44 stages that must stay at 44/44:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
@@ -74,7 +74,7 @@ For any code change:
 1. Run focused release-mode nextest coverage for the crates and repro involved.
 2. Run `cargo nextest run --release --features render --no-fail-fast`.
 3. Run the exact release build shown above.
-4. The acceptance suite still reports **45/45**.
+4. The acceptance suite still reports **44/44**.
 5. For render changes, run deterministic fixtures and broad top/bottom real-site
    captures using the methodology below.
 6. For stealth changes, re-test with `--stealth` (a non-stealth binary won't
@@ -233,7 +233,7 @@ Tests: `cargo test -p telemaco-cli --no-default-features --bin telemaco installe
 
 ## Architecture
 
-- **telemaco-cli**: CLI: `fetch` (`--dump assets|html|text|links|markdown|original|cookies`, `--eval <JS>`, `--screenshot <PNG>`), `scrape`, `mcp`. `--proxy`, `--stealth`, and `--allow-private-network` are global flags: valid before or after the subcommand and applied to `fetch`, `scrape`, and `mcp` (a `scrape` run forwards `--stealth` to each worker via `TELEMACO_STEALTH`).
+- **telemaco-cli**: CLI: `fetch` (`--dump assets|html|text|links|markdown|original|cookies`, `--eval <JS>`, `--screenshot <PNG>`), `mcp`. `--proxy`, `--stealth`, and `--allow-private-network` are global flags: valid before or after the subcommand and applied to `fetch` and `mcp`.
 - **telemaco-js** — V8/`deno_core` runtime. `js/bootstrap.js` is the DOM/browser shim; `src/ops.rs` bridges JS to Rust DOM ops; `src/runtime.rs` owns the isolate and the per-page `TelemacoState`.
 - **telemaco-dom** — DOM tree (`src/tree.rs`).
 - **telemaco-net** — HTTP client (`client.rs`), stealth client (`wreq_client.rs`), cookie jar, robots cache, tracker blocklist.
@@ -355,7 +355,7 @@ credentials):
 telemaco --proxy http://USER:PASS@gate.nodemaven.com:8080 fetch https://example.com --dump text
 
 # SOCKS5
-telemaco --proxy socks5://USER:PASS@gate.nodemaven.com:1080 scrape url1 url2 --concurrency 25
+telemaco --proxy socks5://USER:PASS@gate.nodemaven.com:1080 mcp
 ```
 
 The targeting options (country, region, session id) live in the proxy username,

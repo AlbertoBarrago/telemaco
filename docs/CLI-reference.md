@@ -1,6 +1,6 @@
 ## `telemaco`
 
-Top-level flags apply to every subcommand. Run with no subcommand to print help.
+Top-level flags. `--proxy`, `--stealth` and `--allow-private-network` apply to `fetch` and `mcp`, `--obey-robots` to `fetch`. Run with no subcommand to print help.
 
 ```
 -v, --verbose                Enable info logging
@@ -56,32 +56,6 @@ requests a fixed `N`-second delay. `--timeout` separately bounds navigation.
 | `assets`   | Every external resource, one JSON object per line (DOM assets plus `fetch()`/XHR requests) |
 | `original` | Raw HTTP response body (binary-safe, bypasses the engine) |
 | `cookies`  | All cookies in the jar as a JSON array, including HttpOnly cookies invisible to `document.cookie` |
-
-## `telemaco scrape [URLS]...`
-
-Run a JS expression across many URLs in parallel.
-
-```
--e, --eval <JS>              JS to run on each page
-    --concurrency <N>        Parallel pages (default 10)
-    --format <FORMAT>        Output format (default json)
-    --timeout <SECONDS>      Per-URL timeout (default 60)
-    --proxy <URL>            HTTP or SOCKS5 proxy
-    --stealth                Consistent browser fingerprint + tracker blocking (global)
-    --allow-private-network  Permit loopback / RFC1918 / link-local
--q, --quiet                  Suppress info logging
--v, --verbose                Enable verbose logging
-```
-
-`--stealth`, `--proxy`, and `--allow-private-network` are global flags: they work before or after any subcommand, so each worker in a `scrape` run inherits stealth too.
-
-Read URLs from stdin with `-`:
-
-```bash
-cat urls.txt | telemaco scrape - --eval "document.title" --concurrency 20
-```
-
-Requires `telemaco-worker` next to `telemaco` in `PATH`.
 
 ## `telemaco mcp`
 

@@ -280,14 +280,9 @@ pub struct Page {
     pub blocked_url_patterns: Vec<String>,
     intercept_tx: Option<tokio::sync::mpsc::UnboundedSender<telemaco_js::ops::InterceptedRequest>>,
     // Scripts to execute in the page's JS context BEFORE any of the page's
-    // own scripts run — the CDP `Page.addScriptToEvaluateOnNewDocument`
-    // contract. Includes `Runtime.addBinding` shims so puppeteer's
-    // `exposeFunction` bindings exist before inline `<script>` tags execute.
+    // own scripts run (`add_preload_script` in the library API), so they are
+    // in place before inline `<script>` tags execute.
     preload_scripts: Vec<String>,
-    /// Whether at least one attached CDP session enabled the Runtime domain.
-    /// Page-owned so the subscription survives replacement of the JS runtime
-    /// during navigation.
-    runtime_events_enabled: std::cell::Cell<bool>,
     /// Document-owned HTML script preparation flags saved while the V8 realm
     /// is suspended for CDP/MCP tab switching.  These are restored only when
     /// the same surviving DomTree is resumed; navigation clears them.
@@ -1141,7 +1136,6 @@ impl Page {
             blocked_url_patterns: Vec::new(),
             intercept_tx: None,
             preload_scripts: Vec::new(),
-            runtime_events_enabled: std::cell::Cell::new(false),
             suspended_started_script_ids: Vec::new(),
             callbacks: Arc::new(CallbackRegistry::new()),
             #[cfg(feature = "stealth")]
@@ -1702,7 +1696,6 @@ impl Page {
         // runtime does not exist yet, so the new runtime would otherwise start
         // with interception disabled and op_fetch_url would never intercept.
         rt.set_intercept_enabled(self.intercept_enabled);
-        rt.set_runtime_events_enabled(self.runtime_events_enabled.get());
 
         if let Some(dom) = self.dom.take() {
             rt.set_dom(dom);
@@ -2343,11 +2336,8 @@ impl Page {
             );
         }
 
-        // CDP `Page.addScriptToEvaluateOnNewDocument` contract: preload
-        // sources must run BEFORE any of the page's own scripts. This is
-        // also where puppeteer's `exposeFunction` wrapper installs itself —
-        // if preload runs after page scripts, every early binding call
-        // hits an undefined function and silently no-ops.
+        // Preload sources must run BEFORE any of the page's own scripts:
+        // a preload that runs after them misses every early call into it.
         let preload_sources = self.preload_scripts.clone();
         if let Some(js) = &mut self.js {
             for source in &preload_sources {
@@ -3095,10 +3085,8 @@ impl Page {
         if url.scheme() == "about" {
             self.navigate_blank();
             self.init_js();
-            // Preloads (Page.addScriptToEvaluateOnNewDocument, the
-            // Runtime.addBinding shim) must run on about:blank too —
-            // puppeteer's `browser.newPage()` lands on about:blank and
-            // a follow-up `exposeFunction` is unusable otherwise.
+            // Preloads must run on about:blank too, so a page opened blank
+            // and then scripted sees them like any other document.
             let preload_sources = self.preload_scripts.clone();
             if let Some(js) = &mut self.js {
                 for source in &preload_sources {
@@ -3793,32 +3781,6 @@ impl Page {
             .unwrap_or_default()
     }
 
-    /// Move network events recorded for script-initiated requests
-    /// (fetch/XHR/dynamic resource) from the JS runtime into this page's
-    /// network_events, so the CDP layer emits Network.requestWillBeSent /
-    /// responseReceived for them (issue #406). Idempotent: the runtime's queue
-    /// is drained, so calling this repeatedly does not duplicate events. The
-    /// fetch-{N} request id is preserved so Network.getResponseBody resolves.
-    pub fn sync_js_network_events(&mut self) {
-        let events = match self.js.as_ref() {
-            Some(js) => js.take_js_network_events(),
-            None => return,
-        };
-        for ev in events {
-            self.network_events.push(NetworkEvent {
-                request_id: ev.request_id,
-                url: ev.url,
-                method: ev.method,
-                resource_type: "Fetch".to_string(),
-                status: ev.status,
-                headers: std::collections::HashMap::new(),
-                response_headers: Arc::new(ev.response_headers),
-                body_size: ev.body_size,
-                timestamp: ev.timestamp,
-            });
-        }
-    }
-
     pub fn dom(&self) -> Option<&DomTree> {
         self.dom.as_ref()
     }
@@ -4285,29 +4247,6 @@ impl Page {
             js.take_pending_navigation()
         } else {
             None
-        }
-    }
-
-    pub fn take_pending_binding_calls(&self) -> Vec<(String, String)> {
-        if let Some(js) = &self.js {
-            js.take_pending_binding_calls()
-        } else {
-            Vec::new()
-        }
-    }
-
-    pub fn take_pending_runtime_events(&mut self) -> Vec<telemaco_js::ops::RuntimeEvent> {
-        if let Some(js) = &mut self.js {
-            js.take_pending_runtime_events()
-        } else {
-            Vec::new()
-        }
-    }
-
-    pub fn set_runtime_events_enabled(&self, enabled: bool) {
-        self.runtime_events_enabled.set(enabled);
-        if let Some(js) = &self.js {
-            js.set_runtime_events_enabled(enabled);
         }
     }
 

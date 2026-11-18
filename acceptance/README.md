@@ -1,7 +1,7 @@
 # Acceptance gate
 
 The behavioral gate for telemaco. It drives the release binary against local
-fixtures and reports one pass/fail plus a median latency for each of its 45
+fixtures and reports one pass/fail plus a median latency for each of its 44
 stages. Everything is served from this machine, so a run is deterministic and
 needs no network.
 
@@ -10,7 +10,7 @@ CARGO_INCREMENTAL=0 cargo build --release -p telemaco-cli --bins --features rend
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
 ```
 
-Expected result: **45/45**. The exit code is non-zero when any stage fails.
+Expected result: **44/44**. The exit code is non-zero when any stage fails.
 
 ## Why it exists
 
@@ -66,7 +66,7 @@ rather than the intended signal.
 | `security.` | 3 | the SSRF gate closed and open, robots.txt |
 | `render.` | 3 | screenshot, viewport height, PDF |
 | `protocol.` | 4 | MCP tool list, MCP navigate and read, MCP fill and select, stdio stream cleanliness |
-| `speed.` | 3 | static page, scripted page, parallel scrape |
+| `speed.` | 2 | static page, scripted page |
 
 ## Characterization stages
 

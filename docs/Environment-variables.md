@@ -47,7 +47,7 @@ TELEMACO_SCRIPT_DEADLINE_MS=60000 telemaco mcp
 Maximum live nodes per document. Default 500000 (about 500 MB of resident memory at the cap). Once a document reaches it, DOM calls that create nodes (`createElement`, `cloneNode`, `innerHTML`, `document.write`, and similar) throw a `RangeError`, so a script that grows the DOM without bound fails fast instead of consuming native memory. Real pages stay far below the default; lower it to bound per-worker memory under high concurrency:
 
 ```bash
-TELEMACO_MAX_DOM_NODES=300000 telemaco scrape url1 url2 --concurrency 25
+TELEMACO_MAX_DOM_NODES=300000 telemaco mcp
 ```
 
 ### `TELEMACO_MODULE_BUDGET_MS`
@@ -66,14 +66,6 @@ Request timeout for scripted `fetch()`, `XMLHttpRequest`, and ES-module loads. W
 
 ```bash
 TELEMACO_FETCH_TIMEOUT_MS=15000 telemaco mcp
-```
-
-### `TELEMACO_PROXY`
-
-Default proxy URL used by `telemaco-worker` for the parallel `scrape` command when no `--proxy` flag is set.
-
-```bash
-TELEMACO_PROXY=http://proxy.example.com:8080 telemaco scrape - < urls.txt
 ```
 
 ## Stealth and identity
@@ -188,4 +180,4 @@ Defaults are `--max-old-space-size=4096 --max-semi-space-size=4 --optimize-for-s
 
 ## HTTP proxy environment
 
-Telemaco does not honor `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`. Use `--proxy` or `TELEMACO_PROXY`.
+Telemaco does not honor `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`. Use the `--proxy` flag.

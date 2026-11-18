@@ -50,8 +50,7 @@ builders must pass `--features render`.
 
 ## What's in the archive
 
-- `telemaco`: the CLI and the MCP server.
-- `telemaco-worker`: helper for the parallel `scrape` command. Keep both in the same directory.
+- `telemaco`: the CLI and the MCP server, in a single binary.
 
 Archive suffixes identify the feature set: no suffix includes rendering,
 `-stealth` includes rendering and stealth, `-no-render` includes neither, and

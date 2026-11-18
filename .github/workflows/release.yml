@@ -75,7 +75,7 @@ jobs:
         run: |
           BIN_DIR=target/${{ matrix.target }}/release
           mkdir -p dist/no-render
-          cp "$BIN_DIR/telemaco" "$BIN_DIR/telemaco-worker" dist/no-render/
+          cp "$BIN_DIR/telemaco" dist/no-render/
 
       - name: Build no-render stealth release binary
         run: cargo build --release --target ${{ matrix.target }} -p telemaco-cli --bins --no-default-features --features stealth
@@ -85,7 +85,7 @@ jobs:
         run: |
           BIN_DIR=target/${{ matrix.target }}/release
           mkdir -p dist/no-render-stealth
-          cp "$BIN_DIR/telemaco" "$BIN_DIR/telemaco-worker" dist/no-render-stealth/
+          cp "$BIN_DIR/telemaco" dist/no-render-stealth/
 
       - name: Build render-enabled release binary
         run: cargo build --release --target ${{ matrix.target }} -p telemaco-cli --bins --features render
@@ -95,7 +95,7 @@ jobs:
         run: |
           BIN_DIR=target/${{ matrix.target }}/release
           mkdir -p dist/default
-          cp "$BIN_DIR/telemaco" "$BIN_DIR/telemaco-worker" dist/default/
+          cp "$BIN_DIR/telemaco" dist/default/
 
       - name: Build render-enabled stealth release binary
         run: cargo build --release --target ${{ matrix.target }} -p telemaco-cli --bins --features render,stealth
@@ -105,7 +105,7 @@ jobs:
         run: |
           BIN_DIR=target/${{ matrix.target }}/release
           mkdir -p dist/stealth
-          cp "$BIN_DIR/telemaco" "$BIN_DIR/telemaco-worker" dist/stealth/
+          cp "$BIN_DIR/telemaco" dist/stealth/
 
       - name: Smoke test release binaries (V8 snapshot)
         # Run the V8 path once so a release never ships a binary that crashes at
@@ -135,10 +135,10 @@ jobs:
 
       - name: Package release binaries
         run: |
-          tar czf ${{ matrix.name }}.tar.gz -C dist/default telemaco telemaco-worker
-          tar czf ${{ matrix.name }}-stealth.tar.gz -C dist/stealth telemaco telemaco-worker
-          tar czf ${{ matrix.name }}-no-render.tar.gz -C dist/no-render telemaco telemaco-worker
-          tar czf ${{ matrix.name }}-no-render-stealth.tar.gz -C dist/no-render-stealth telemaco telemaco-worker
+          tar czf ${{ matrix.name }}.tar.gz -C dist/default telemaco
+          tar czf ${{ matrix.name }}-stealth.tar.gz -C dist/stealth telemaco
+          tar czf ${{ matrix.name }}-no-render.tar.gz -C dist/no-render telemaco
+          tar czf ${{ matrix.name }}-no-render-stealth.tar.gz -C dist/no-render-stealth telemaco
 
       - name: Upload packaged binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

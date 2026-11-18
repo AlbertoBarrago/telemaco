@@ -54,6 +54,7 @@ if [[ $UNINSTALL -eq 1 ]]; then
   if ! ask "Remove telemaco from $PREFIX?"; then
     echo "aborted"; exit 0
   fi
+  # telemaco-worker shipped with releases up to 0.2.6; remove a leftover copy.
   rm -f "$PREFIX/telemaco" "$PREFIX/telemaco-worker"
   ok "Removed telemaco from $PREFIX"
   echo "  Note: To remove agent configurations, run: telemaco uninstall"
@@ -100,8 +101,6 @@ install_from_source() {
     || die "build failed"
   mkdir -p "$PREFIX"
   install -m 0755 target/release/telemaco "$PREFIX/telemaco"
-  [[ -f target/release/telemaco-worker ]] \
-    && install -m 0755 target/release/telemaco-worker "$PREFIX/telemaco-worker"
   ok "built with features: $features"
 }
 
@@ -146,7 +145,6 @@ for a in r.get('assets', []):
 
   mkdir -p "$PREFIX"
   install -m 0755 "$tmp/telemaco" "$PREFIX/telemaco"
-  [[ -f "$tmp/telemaco-worker" ]] && install -m 0755 "$tmp/telemaco-worker" "$PREFIX/telemaco-worker"
   rm -rf "$tmp"
   ok "installed the published $ASSET"
 }

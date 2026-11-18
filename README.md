@@ -38,8 +38,8 @@ attribution.
 Obscura is a browser engine; Telemaco is a browser engine **for automation**.
 Where Obscura focuses on the rendering core, Telemaco adds the surfaces that
 make it useful in production: a
-stateful MCP server for AI agents, stealth against bot detection, parallel
-scraping, and a one-command installer that wires it into 15 coding agents.
+stateful MCP server for AI agents, stealth against bot detection, and a
+one-command installer that wires it into 15 coding agents.
 
 ## Why Telemaco over headless Chrome?
 
@@ -92,7 +92,7 @@ brew install telemaco
 ```
 
 Installs the render-enabled build (full DOM, layout, screenshots, PDF) as
-`telemaco`, with `telemaco-worker` alongside it for `scrape`. The stealth
+`telemaco`. The stealth
 variant is a separate formula that installs as `telemaco-stealth`, so the two
 can coexist:
 
@@ -108,16 +108,14 @@ than `telemaco update`, which would replace a binary Homebrew owns.
 ### Updating
 
 ```bash
-telemaco update            # replace the binaries with the latest release
+telemaco update            # replace the binary with the latest release
 telemaco update --check    # report only; exit 1 means an update is available
 ```
 
 The update keeps the build variant you installed, so a stealth install stays a
-stealth install rather than quietly becoming the plain one. Both `telemaco` and
-`telemaco-worker` are replaced together, since a mismatched pair breaks
-`scrape`. The download is verified by running it before anything is replaced,
-and the replacement itself is a rename, so a failure leaves the working install
-untouched.
+stealth install rather than quietly becoming the plain one. The download is
+verified by running it before anything is replaced, and the replacement itself
+is a rename, so a failure leaves the working install untouched.
 
 Run interactively, telemaco checks once a day whether a newer release exists
 and says so. It never does this when stderr is not a terminal, which covers
@@ -146,8 +144,7 @@ tar xzf telemaco-x86_64-linux.tar.gz
 ./telemaco fetch https://example.com --eval "document.title"
 ```
 
-Release archives include both `telemaco` and `telemaco-worker`; keep them in
-the same directory for the parallel `scrape` command.
+Release archives contain the single `telemaco` binary.
 
 | Archive suffix        | Rendering | Stealth transport |
 |-----------------------|-----------|-------------------|
@@ -274,21 +271,6 @@ telemaco mcp --allow-private-network
 The full allow/deny rules (including DNS-resolution-time checks) are in
 [docs/Environment-variables.md](docs/Environment-variables.md).
 
-### Scrape in parallel
-
-```bash
-telemaco scrape url1 url2 url3 ... \
-  --concurrency 25 \
-  --eval "document.querySelector('h1').textContent" \
-  --format json
-
-# Suppress scrape progress on stderr for script-friendly output
-telemaco scrape https://example.com --quiet --format json
-
-# Workers inherit the global proxy
-telemaco --proxy http://127.0.0.1:8080 scrape https://example.com https://news.ycombinator.com
-```
-
 ## MCP (Model Context Protocol)
 
 Telemaco ships an MCP server that exposes browser automation tools to AI
@@ -394,16 +376,7 @@ rewritten as strict JSON, and the note says so.
 | `--proxy` | — | Inherited global HTTP/SOCKS5 proxy URL |
 
 Global flags `--proxy`, `--stealth`, and `--allow-private-network` are valid
-before or after the subcommand and apply to `fetch`, `scrape`, and `mcp`.
-
-### `telemaco scrape <URL...>`
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--concurrency` | `10` | Parallel workers |
-| `--eval` | — | JS expression per page |
-| `--format` | `json` | `json` or `text` |
-| `--quiet` | off | Suppress scrape progress on stderr |
+before or after the subcommand and apply to `fetch` and `mcp`.
 
 ## Stealth mode
 
@@ -418,7 +391,7 @@ surface: screenshot, PDF, and MCP all keep working.
 
 | Crate | Role |
 |-------|------|
-| `telemaco-cli` | CLI: `fetch`, `scrape`, `mcp`, `install`, `update` |
+| `telemaco-cli` | CLI: `fetch`, `mcp`, `install`, `update` |
 | `telemaco-js` | V8/`deno_core` runtime and DOM ops bridge |
 | `telemaco-dom` | DOM tree |
 | `telemaco-net` | HTTP client, stealth transport, cookie jar, robots cache, tracker blocklist |
@@ -438,7 +411,7 @@ cargo nextest run --release --features render --no-fail-fast
 ```
 
 The behavioral gate is the acceptance suite in
-[`acceptance/`](acceptance/README.md), 45 stages that must stay at 45/45:
+[`acceptance/`](acceptance/README.md), 44 stages that must stay at 44/44:
 
 ```bash
 TELEMACO_BIN=./target/release/telemaco python3 acceptance/run.py
