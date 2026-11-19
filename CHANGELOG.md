@@ -5,6 +5,44 @@ All notable changes to Telemaco are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-19
+
+This release narrows Telemaco to the surfaces it is used through: `fetch`, the
+MCP server (`mcp`, `install`, `uninstall`), `update` and the `telemaco` Rust
+crate. Everything else is removed, so scripts and formulas written for 0.2.x
+may need changes.
+
+### Removed
+
+- **The CDP server.** `telemaco serve`, the Chrome DevTools Protocol layer and
+  the Docker image are gone, so Puppeteer and Playwright can no longer connect
+  to Telemaco (#25).
+- **`telemaco scrape` and the `telemaco-worker` binary.** Release archives now
+  hold only `telemaco`. Uninstalling with `install.sh` still removes a
+  worker left over from an earlier install (#28).
+- **`telemaco remote`** and the `telemaco-remote` crate (#27).
+- **Windows release builds.** Windows users build from source (#27).
+- **Engine APIs only the CDP server used**, on `telemaco-js` and
+  `telemaco-browser`: binding calls, runtime events, script network events and
+  `BrowserContext::allow_file_access` (#28).
+- **The `paint` feature of `telemaco-render`.** Painting is always compiled in,
+  as every shipped build already enabled it (#27).
+- The self-hosted rustdoc in `api/` and the unreferenced `vendor/` tree (#22,
+  #27).
+
+### Fixed
+
+- **MCP `browser_console_messages` always returned "No console messages."**
+  Page `console.*` calls are now recorded (up to 1000, oldest dropped) and
+  returned (#31).
+- **`telemaco update` pointed Windows users at a release asset** that no longer
+  exists (#27).
+
+### Changed
+
+- README, CLI reference and build docs rewritten to match the code, without
+  the benchmark and size claims inherited from Obscura (#33, #34).
+
 ## [0.2.6] - 2026-11-12
 
 ### Added
@@ -152,6 +190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the lifecycle hook, but not the Apex content loading, which remains
   unresolved. The rest of the engine works normally.
 
+[0.3.0]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.3.0
 [0.2.6]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.6
 [0.2.5]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.5
 [0.2.4]: https://github.com/AlbertoBarrago/telemaco/releases/tag/v0.2.4
