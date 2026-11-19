@@ -25,7 +25,6 @@ WRITE_PERMISSION_RE = re.compile(
 WRITE_ALL_RE = re.compile(r"\bpermissions\s*:\s*['\"]?write-all['\"]?(?:\s|$)")
 SECRET_REFERENCE_RE = re.compile(r"\$\{\{\s*secrets\s*(?:\.|\[)")
 MAINTAINER_PRIVILEGED_WORKFLOWS = {
-    ".github/workflows/docker.yml",
     ".github/workflows/release.yml",
 }
 UNTRUSTED_CONTEXT_RE = re.compile(
