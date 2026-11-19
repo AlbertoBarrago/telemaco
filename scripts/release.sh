@@ -101,6 +101,24 @@ bump_file Cargo.toml \
 bump_file crates/telemaco/Cargo.toml \
   "s/^version = \"\Q$CURRENT\E\"\$/version = \"$VERSION\"/m"
 
+# The workspace crates depend on each other by path AND version, and a 0.x
+# caret requirement never crosses a minor: `telemaco-dom = "0.2.0"` rejects
+# 0.3.0 and `cargo update` fails. Patch releases never hit it, so 0.3.0 was
+# the first to stop here. Rewrite every internal requirement to the new
+# version; external dependencies are not prefixed `telemaco-`, so they stay.
+INTERNAL_DEP_EXPR="s/^(telemaco-[a-z-]+ = \\{ path = \"[^\"]+\", version = )\"[^\"]*\"/\${1}\"$VERSION\"/mg"
+bump_file Cargo.toml "$INTERNAL_DEP_EXPR"
+bump_file crates/telemaco/Cargo.toml "$INTERNAL_DEP_EXPR"
+
+# Catch a requirement the rewrite missed (a reordered key, another layout)
+# here, with its line, rather than as a cargo resolver error.
+if [[ $DRY_RUN -eq 0 ]]; then
+  STALE_DEPS="$(grep -nE '^telemaco-[a-z-]+ = \{.*path = ' Cargo.toml crates/*/Cargo.toml \
+    | grep -v "version = \"$VERSION\"" || true)"
+  [[ -z "$STALE_DEPS" ]] || die "internal dependencies not moved to $VERSION:
+$STALE_DEPS"
+fi
+
 if [[ $DRY_RUN -eq 1 ]]; then
   printf '  would run   cargo update -w (refresh Cargo.lock)\n'
 else
