@@ -18,8 +18,8 @@ stealth = ["api", "telemaco-browser/stealth"]
 render = ["api", "telemaco-browser/render"]
 
 [dependencies]
-telemaco-browser = { path = "../telemaco-browser", version = "0.2.0", optional = true }
-telemaco-net = { path = "../telemaco-net", version = "0.2.0", optional = true }
+telemaco-browser = { path = "../telemaco-browser", version = "0.3.0", optional = true }
+telemaco-net = { path = "../telemaco-net", version = "0.3.0", optional = true }
 anyhow = "1"
 tokio = { version = "1", features = ["rt"], optional = true }
 thiserror = { workspace = true }

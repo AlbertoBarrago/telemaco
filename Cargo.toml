@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.6"
+version = "0.3.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/AlbertoBarrago/telemaco"
@@ -21,12 +21,12 @@ rust-version = "1.85"
 authors = ["Alberto Barrago"]
 
 [workspace.dependencies]
-telemaco-dom = { path = "crates/telemaco-dom", version = "0.2.0" }
-telemaco-net = { path = "crates/telemaco-net", version = "0.2.0" }
-telemaco-browser = { path = "crates/telemaco-browser", version = "0.2.0" }
-telemaco-js = { path = "crates/telemaco-js", version = "0.2.0" }
-telemaco-mcp = { path = "crates/telemaco-mcp", version = "0.2.0" }
-telemaco-render = { path = "crates/telemaco-render", version = "0.2.0" }
+telemaco-dom = { path = "crates/telemaco-dom", version = "0.3.0" }
+telemaco-net = { path = "crates/telemaco-net", version = "0.3.0" }
+telemaco-browser = { path = "crates/telemaco-browser", version = "0.3.0" }
+telemaco-js = { path = "crates/telemaco-js", version = "0.3.0" }
+telemaco-mcp = { path = "crates/telemaco-mcp", version = "0.3.0" }
+telemaco-render = { path = "crates/telemaco-render", version = "0.3.0" }
 
 html5ever = "0.39"
 markup5ever = "0.39"
